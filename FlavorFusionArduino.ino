@@ -83,9 +83,6 @@ void sendSpiceData(int containerNumber, float spiceAmount) {
 void sendOrderMixedStatus(bool mixedStatus) {
   uint8_t mixedStatusByte = mixedStatus ? 1 : 0;  // Convert the boolean to a byte
   spiceMixedCharacteristic.writeValue(mixedStatusByte);  // Send the byte value
-  if (mixedStatus) {
-    Serial.println("Order has been mixed!");
-  }
 }
 
 void onIngredientsWritten(BLEDevice central, BLECharacteristic characteristic) {
