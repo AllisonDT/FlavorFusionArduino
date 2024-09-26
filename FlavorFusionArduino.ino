@@ -1,16 +1,27 @@
 #include <ArduinoBLE.h>
 
-const int numContainers = 10;
-int containerNumbers[numContainers] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-float spiceAmountsInGrams[numContainers] = {1.0, 4.5, 1.25, 2.8, 4.3, 3.6, 4.2, 3.9, 3.4, 2.7};
-
 bool isOrderMixed = false;  // Track whether the whole order is mixed
+bool isTrayEmpty = false;   // Track whether the tray is empty
 
 BLEService spiceService("180C");
-BLECharacteristic containerNumberCharacteristic("2A56", BLERead | BLENotify, sizeof(int32_t));
-BLECharacteristic spiceAmountCharacteristic("2A57", BLERead | BLENotify, sizeof(float));
-BLECharacteristic serializedIngredientsCharacteristic("2A58", BLEWrite | BLEWriteWithoutResponse, 512);
-BLECharacteristic spiceMixedCharacteristic("2A59", BLERead | BLENotify, sizeof(uint8_t)); // Characteristic for order mixed status
+
+BLECharacteristic serializedIngredientsCharacteristic(
+  "2A58", 
+  BLEWrite | BLEWriteWithoutResponse, 
+  512
+);
+
+BLECharacteristic spiceMixedCharacteristic(
+  "2A59", 
+  BLERead | BLENotify, 
+  sizeof(uint8_t)
+); // Characteristic for order mixed status
+
+BLECharacteristic trayStatusCharacteristic(
+  "19B10002-E8F2-537E-4F6C-D104768A1214", 
+  BLERead | BLENotify, 
+  sizeof(uint8_t)
+); // Tray status characteristic
 
 void setup() {
   Serial.begin(9600);
@@ -23,10 +34,11 @@ void setup() {
 
   BLE.setLocalName("Flavor Fusion");
   BLE.setAdvertisedService(spiceService);
-  spiceService.addCharacteristic(containerNumberCharacteristic);
-  spiceService.addCharacteristic(spiceAmountCharacteristic);
+
   spiceService.addCharacteristic(serializedIngredientsCharacteristic);
-  spiceService.addCharacteristic(spiceMixedCharacteristic); // Add the spice mixed characteristic
+  spiceService.addCharacteristic(spiceMixedCharacteristic);
+  spiceService.addCharacteristic(trayStatusCharacteristic); // Add the tray status characteristic
+
   BLE.addService(spiceService);
   BLE.advertise();
 
@@ -44,17 +56,15 @@ void loop() {
     Serial.println(central.address());
 
     while (central.connected()) {
-      // Send spice data as usual
-      for (int i = 0; i < numContainers; i++) {
-        sendSpiceData(containerNumbers[i], spiceAmountsInGrams[i]);
-      }
-
       // Check if the entire order has been mixed
       if (isOrderMixed) {
         sendOrderMixedStatus(true);  // Send true when the order is done mixing
       }
 
-      // Check for serial input to update spice amounts
+      // Send tray empty status
+      sendTrayEmptyStatus(isTrayEmpty);
+
+      // Check for serial input to update statuses
       if (Serial.available() > 0) {
         String input = Serial.readStringUntil('\n');
         processSerialInput(input);
@@ -72,17 +82,14 @@ void loop() {
   }
 }
 
-void sendSpiceData(int containerNumber, float spiceAmount) {
-  containerNumberCharacteristic.writeValue((int32_t)containerNumber);
-
-  byte spiceAmountBytes[sizeof(float)];
-  memcpy(spiceAmountBytes, &spiceAmount, sizeof(float));
-  spiceAmountCharacteristic.writeValue(spiceAmountBytes, sizeof(spiceAmountBytes));
-}
-
 void sendOrderMixedStatus(bool mixedStatus) {
   uint8_t mixedStatusByte = mixedStatus ? 1 : 0;  // Convert the boolean to a byte
   spiceMixedCharacteristic.writeValue(mixedStatusByte);  // Send the byte value
+}
+
+void sendTrayEmptyStatus(bool emptyStatus) {
+  uint8_t statusByte = emptyStatus ? 1 : 0;  // Convert the boolean to a byte
+  trayStatusCharacteristic.writeValue(statusByte);  // Send the byte value
 }
 
 void onIngredientsWritten(BLEDevice central, BLECharacteristic characteristic) {
@@ -103,7 +110,7 @@ void processReceivedIngredients(String data) {
   Serial.println("Processing received ingredients data:");
   
   int start = 0;
-  int separatorIndex = data.indexOf(';');
+  int separatorIndex = data.indexOf(';', start);
   
   while (separatorIndex != -1) {
     String ingredientPair = data.substring(start, separatorIndex);
@@ -117,15 +124,19 @@ void processReceivedIngredients(String data) {
     Serial.println(ingredientAmount);
     
     // Here you would process each ingredient and mark it as mixed (simplified in this example)
-    markOrderAsMixed();
 
     start = separatorIndex + 1;
     separatorIndex = data.indexOf(';', start);
   }
+
+  // After processing all ingredients, mark the order as mixed
+  markOrderAsMixed();
 }
 
 void markOrderAsMixed() {
   isOrderMixed = true;  // Once all ingredients are processed, mark the order as mixed
+  sendOrderMixedStatus(true);  // Send the status immediately
+  Serial.println("Order has been marked as mixed.");
 }
 
 void resetOrderMixed() {
@@ -151,35 +162,21 @@ void processSerialInput(String input) {
     return;
   }
 
-  int spaceIndex = input.indexOf(' ');
-  if (spaceIndex == -1) {
-    Serial.println("Invalid input. Use format: containerNumber newAmount or 'complete'/'reset' to simulate blend completion.");
+  // Check if the input is to set the tray as empty
+  if (input.equalsIgnoreCase("tray empty")) {
+    isTrayEmpty = true;
+    sendTrayEmptyStatus(true);
+    Serial.println("Manually set tray as empty.");
     return;
   }
 
-  String containerStr = input.substring(0, spaceIndex);
-  String amountStr = input.substring(spaceIndex + 1);
-
-  int containerNumber = containerStr.toInt();
-  float newAmount = amountStr.toFloat();
-
-  // Update the spice array
-  bool found = false;
-  for (int i = 0; i < numContainers; i++) {
-    if (containerNumbers[i] == containerNumber) {
-      spiceAmountsInGrams[i] = newAmount;
-      isOrderMixed = false;  // Reset the mixed status if any spice amount is updated
-      found = true;
-      Serial.print("Updated container ");
-      Serial.print(containerNumber);
-      Serial.print(" with new amount: ");
-      Serial.println(newAmount);
-      break;
-    }
+  // Check if the input is to set the tray as not empty
+  if (input.equalsIgnoreCase("tray not empty")) {
+    isTrayEmpty = false;
+    sendTrayEmptyStatus(false);
+    Serial.println("Manually set tray as not empty.");
+    return;
   }
 
-  if (!found) {
-    Serial.println("Container number not found.");
-  }
+  Serial.println("Invalid input. Use 'complete'/'reset' or 'tray empty'/'tray not empty' to simulate actions.");
 }
-
