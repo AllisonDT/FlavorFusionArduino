@@ -1,7 +1,7 @@
 #include <ArduinoBLE.h>
 
 bool isOrderMixed = false;  // Track whether the whole order is mixed
-bool isTrayEmpty = false;   // Track whether the tray is empty
+bool isTrayEmpty = true;   // Track whether the tray is empty
 
 BLEService spiceService("180C");
 
