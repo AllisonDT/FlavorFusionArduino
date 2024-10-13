@@ -1,7 +1,7 @@
 #include <ArduinoBLE.h>
 
 bool isOrderMixed = false;  // Track whether the whole order is mixed
-bool isTrayEmpty = true;   // Track whether the tray is empty
+bool isTrayEmpty = true;    // Track whether the tray is empty
 
 BLEService spiceService("180C");
 
@@ -22,6 +22,8 @@ BLECharacteristic trayStatusCharacteristic(
   BLERead | BLENotify, 
   sizeof(uint8_t)
 ); // Tray status characteristic
+
+String dataBuffer = ""; // Global buffer to accumulate incoming data
 
 void setup() {
   Serial.begin(9600);
@@ -93,17 +95,30 @@ void sendTrayEmptyStatus(bool emptyStatus) {
 }
 
 void onIngredientsWritten(BLEDevice central, BLECharacteristic characteristic) {
-  int dataLength = characteristic.valueLength();
+    int dataLength = characteristic.valueLength();
 
-  String receivedData = "";
-  for (int i = 0; i < dataLength; i++) {
-    receivedData += (char)characteristic.value()[i];
-  }
+    // Append the received data to the buffer
+    for (int i = 0; i < dataLength; i++) {
+        dataBuffer += (char)characteristic.value()[i];
+    }
 
-  Serial.print("Received serialized ingredients: ");
-  Serial.println(receivedData);
-  
-  processReceivedIngredients(receivedData);
+    // Check if the data contains the end marker "#END"
+    if (dataBuffer.indexOf("#END") != -1) {
+        // Remove the end marker from the buffer
+        dataBuffer.replace("#END", "");
+
+        Serial.print("Received complete serialized ingredients: ");
+        Serial.println(dataBuffer);
+
+        // Process the complete received data
+        processReceivedIngredients(dataBuffer);
+
+        // Clear the buffer after processing the data
+        dataBuffer = "";
+    } else {
+        // Data is incomplete, wait for more data to arrive
+        Serial.println("Waiting for more data to complete the ingredients...");
+    }
 }
 
 void processReceivedIngredients(String data) {
@@ -114,16 +129,16 @@ void processReceivedIngredients(String data) {
   
   while (separatorIndex != -1) {
     String ingredientPair = data.substring(start, separatorIndex);
-    int colonIndex = ingredientPair.indexOf(':');
-    String ingredientName = ingredientPair.substring(0, colonIndex);
-    String ingredientAmount = ingredientPair.substring(colonIndex + 1);
+    if (ingredientPair.length() > 0) {  // Skip empty pairs
+      int colonIndex = ingredientPair.indexOf(':');
+      String ingredientName = ingredientPair.substring(0, colonIndex);
+      String ingredientAmount = ingredientPair.substring(colonIndex + 1);
     
-    Serial.print("Ingredient: ");
-    Serial.print(ingredientName);
-    Serial.print(", Amount: ");
-    Serial.println(ingredientAmount);
-    
-    // Here you would process each ingredient and mark it as mixed (simplified in this example)
+      Serial.print("Ingredient: ");
+      Serial.print(ingredientName);
+      Serial.print(", Amount: ");
+      Serial.println(ingredientAmount);
+    }
 
     start = separatorIndex + 1;
     separatorIndex = data.indexOf(';', start);
