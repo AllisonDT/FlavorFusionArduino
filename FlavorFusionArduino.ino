@@ -20,9 +20,6 @@ void setup() {
 
   Serial.println("HM-10 Bluetooth Module Test");
   Serial.println("Waiting for incoming data from HM-10...");
-
-  // Optional: Change HM-10 name
-  changeHM10Name("Flavor Fusion");
 }
 
 void loop() {
@@ -159,17 +156,4 @@ void checkAndSendStatusUpdates() {
     sendTrayEmptyStatus();
     prevIsTrayEmpty = isTrayEmpty;
   }
-}
-
-void changeHM10Name(String newName) {
-  Serial.println("Changing HM-10 name to: " + newName);
-  Serial1.print("AT+NAME" + newName + "\r\n");
-  delay(500);
-
-  // Read response from HM-10
-  String response = "";
-  while (Serial1.available()) {
-    response += (char)Serial1.read();
-  }
-  Serial.println("HM-10 response: " + response);
 }
