@@ -170,6 +170,19 @@ void processReceivedIngredients(String data) {
     separatorIndex = data.indexOf(';', start);
   }
 
+  // Bubble sort spice array to ascending container number
+  for (uint8_t c = 0; c < numSpicesOrdered - 1; c++) { // loop thru container numbers
+    for (uint8_t d = 0; d < numSpicesOrdered - c - 1; d++) { // loop thru successive containers
+      if (spiceArray[d][0].toInt() > spiceArray[d + 1][0].toInt()) { // compare
+        for (uint8_t e = 0; e < 2; e++) {  // swap both container numbers and amounts
+          String tempval = spiceArray[d][e];
+          spiceArray[d][e] = spiceArray[d + 1][e]; 
+          spiceArray[d + 1][e] = tempval;
+        }
+      }
+    }
+  }
+
   // After processing all ingredients, mark the order as ready to be mixed
   if (numSpicesOrdered > 0) {
     isOrderMixed = false;
