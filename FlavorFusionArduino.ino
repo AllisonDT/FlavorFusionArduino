@@ -4,6 +4,8 @@
 // HM-10 TXD to Arduino Mega RX1 (Pin 19)
 // HM-10 RXD to Arduino Mega TX1 (Pin 18) (Use voltage divider to reduce 5V to 3.3V)
 
+#include <algorithm>
+
 // Variables
 String incomingString = "";
 bool isOrderMixed = true;     // Track whether the whole order is mixed
@@ -137,58 +139,53 @@ void sendOrderMixedStatus() {
   Serial.println("Order mixed status sent: ORDER_MIXED:1");
 }
 
+#include <algorithm> // For std::sort
+
+// Custom comparator function for sorting spiceArray
+bool compareSpices(const String a[2], const String b[2]) {
+    return a[0].toInt() < b[0].toInt();
+}
+
 void processReceivedIngredients(String data) {
-  int start = 0;
-  int separatorIndex = data.indexOf(';', start);
-  numSpicesOrdered = 0;
+    int start = 0;
+    int separatorIndex = data.indexOf(';', start);
+    numSpicesOrdered = 0;
 
-  while (separatorIndex != -1) {
-    String ingredientPair = data.substring(start, separatorIndex);
-    if (ingredientPair.length() > 0) {
-      int colonIndex = ingredientPair.indexOf(':');
-      if (colonIndex != -1) {
-        String ingredientID = ingredientPair.substring(0, colonIndex);
-        String ingredientAmount = ingredientPair.substring(colonIndex + 1);
+    while (separatorIndex != -1) {
+        String ingredientPair = data.substring(start, separatorIndex);
+        if (ingredientPair.length() > 0) {
+            int colonIndex = ingredientPair.indexOf(':');
+            if (colonIndex != -1) {
+                String ingredientID = ingredientPair.substring(0, colonIndex);
+                String ingredientAmount = ingredientPair.substring(colonIndex + 1);
 
-        // Ensure that the amount is properly parsed and valid
-        float amount = ingredientAmount.toFloat();
-        if (amount > 0) {
-          spiceArray[numSpicesOrdered][0] = ingredientID;
-          spiceArray[numSpicesOrdered][1] = ingredientAmount;
-          numSpicesOrdered++;
+                // Ensure that the amount is properly parsed and valid
+                float amount = ingredientAmount.toFloat();
+                if (amount > 0) {
+                    spiceArray[numSpicesOrdered][0] = ingredientID;
+                    spiceArray[numSpicesOrdered][1] = ingredientAmount;
+                    numSpicesOrdered++;
 
-          Serial.print("Ingredient ID: ");
-          Serial.print(ingredientID);
-          Serial.print(", Amount: ");
-          Serial.println(ingredientAmount);
-        } else {
-          Serial.println("Received invalid ingredient amount, skipping.");
+                    Serial.print("Ingredient ID: ");
+                    Serial.print(ingredientID);
+                    Serial.print(", Amount: ");
+                    Serial.println(ingredientAmount);
+                } else {
+                    Serial.println("Received invalid ingredient amount, skipping.");
+                }
+            }
         }
-      }
+        start = separatorIndex + 1;
+        separatorIndex = data.indexOf(';', start);
     }
-    start = separatorIndex + 1;
-    separatorIndex = data.indexOf(';', start);
-  }
 
-  // Bubble sort spice array to ascending container number
-  for (uint8_t c = 0; c < numSpicesOrdered - 1; c++) { // loop thru container numbers
-    for (uint8_t d = 0; d < numSpicesOrdered - c - 1; d++) { // loop thru successive containers
-      if (spiceArray[d][0].toInt() > spiceArray[d + 1][0].toInt()) { // compare
-        for (uint8_t e = 0; e < 2; e++) {  // swap both container numbers and amounts
-          String tempval = spiceArray[d][e];
-          spiceArray[d][e] = spiceArray[d + 1][e]; 
-          spiceArray[d + 1][e] = tempval;
-        }
-      }
+    // Sort spice array by ingredient ID (container number)
+    if (numSpicesOrdered > 0) {
+        std::sort(spiceArray, spiceArray + numSpicesOrdered, compareSpices);
+        isOrderMixed = false;
+    } else {
+        Serial.println("No valid ingredients found.");
     }
-  }
-
-  // After processing all ingredients, mark the order as ready to be mixed
-  if (numSpicesOrdered > 0) {
-    isOrderMixed = false;
-  } else {
-    Serial.println("No valid ingredients found.");
-  }
 }
 
 void moveSusan(int j) {
