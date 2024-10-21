@@ -179,10 +179,10 @@ void processReceivedIngredients(String data) {
 
   // Sort spice array by ingredient ID (container number)
   if (numSpicesOrdered > 0) {
-      std::sort(spiceArray, spiceArray + numSpicesOrdered, compareSpices);
-      isOrderMixed = false;
+    std::sort(spiceArray, spiceArray + numSpicesOrdered, compareSpices);
+    isOrderMixed = false;
   } else {
-      Serial.println("No valid ingredients found.");
+    Serial.println("No valid ingredients found.");
   }
 }
 
