@@ -9,6 +9,8 @@ String incomingString = "";
 bool isOrderMixed = true;     // Track whether the whole order is mixed
 bool isTrayEmpty = true;       // Track whether the tray is empty
 String dataBuffer = "";        // Global buffer to accumulate incoming data
+bool isSusanRotated = 0;
+bool isRailForward = 0;
 
 // Variables to track previous states
 bool prevIsOrderMixed = false;
@@ -19,9 +21,11 @@ const int totalSteps = 200; //200 steps per revolution
 const int totalMicrosteps = 3200; //1/16 microstepping: 3200 steps per revolution
 const int totalSpices = 10;
 
-// NEMA 11 for rail. Connected to X-step and X-dir
-#define railStep A0
-#define railDir  A1
+// NEMA 11 for rail. Connected to E0-step and E0-dir
+// #define railStep 26
+// #define railDir 28
+#define railStep A0 //try connecting to X-step and X-dir
+#define railDir A1
 
 // NEMA 17 for carriage/ lazy susan. Connected to Y-step and Y-dir
 #define susanStep A6
@@ -31,8 +35,6 @@ const int totalSpices = 10;
 #define augerStep 46
 #define augerDir 48
 
-bool isSusanRotated = 0;
-bool isRailForward = 0;
 
 // Spice data arrays
 String spiceArray[10][2];
@@ -42,15 +44,15 @@ int spiceIndex[10][2];
 int numSpicesOrdered;
 
 void setup() {
-  // Set analog pins to output
-  pinMode(railStep, OUTPUT);
-  pinMode(railDir, OUTPUT);
+  // Set analog pins to digital input/output
   pinMode(susanStep, OUTPUT);
   pinMode(susanDir, OUTPUT);
+  pinMode(railStep, OUTPUT);
+  pinMode(railDir, OUTPUT);
   
   // Initialize Serial Monitor and Bluetooth (HM-10)
   Serial.begin(9600);
-  Serial2.begin(9600);   // Serial2 for HM-10 communication
+  Serial1.begin(9600);   // for HM-10 communication
 
   Serial.println("HM-10 Bluetooth Module Test");
   Serial.println("Waiting for incoming data from HM-10...");
@@ -58,9 +60,9 @@ void setup() {
 
 void loop() {
   // Check if data is available from HM-10 (BLE central device)
-  if (Serial2.available()) {
-    while (Serial2.available()) {
-      char c = Serial2.read();
+  if (Serial1.available()) {
+    while (Serial1.available()) {
+      char c = Serial1.read();
       incomingString += c;
 
       // Check if data contains the end marker "#END"
@@ -114,7 +116,7 @@ void loop() {
 
 void sendOrderMixedStatus() {
   // Send the message to the Bluetooth app indicating the order is mixed
-  Serial2.println("ORDER_MIXED:1");
+  Serial1.println("ORDER_MIXED:1");
   Serial.println("Order mixed status sent: ORDER_MIXED:1");
 }
 
@@ -170,14 +172,14 @@ void moveSusan(int j) {
   }
 
   int spiceDiff = abs(spiceArray[j][0].toInt() - prevSpice);
-  int numSteps = spiceDiff * totalSteps;
+  int numSteps = spiceDiff * totalSteps/totalSpices;
 
   digitalWrite(susanDir, LOW);
   for (int s = 0; s < numSteps; s++) {
     digitalWrite(susanStep, HIGH); 
-    delayMicroseconds(500);
+    delayMicroseconds(5000);
     digitalWrite(susanStep, LOW); 
-    delayMicroseconds(500); 
+    delayMicroseconds(5000); 
   }
 
   Serial.println("Spice carriage motion complete");
@@ -192,9 +194,9 @@ void moveRailForward() {
 
   for (int s = 0; s < numSteps; s++) {
     digitalWrite(railStep, HIGH); 
-    delayMicroseconds(500);
+    delayMicroseconds(750);
     digitalWrite(railStep, LOW); 
-    delayMicroseconds(500); 
+    delayMicroseconds(750); 
   }
 
   Serial.println("Rail forward motion complete");
@@ -209,9 +211,9 @@ void moveRailBackward() {
 
   for (int s = 0; s < numSteps; s++) {
     digitalWrite(railStep, HIGH); 
-    delayMicroseconds(500);
+    delayMicroseconds(750);
     digitalWrite(railStep, LOW); 
-    delayMicroseconds(500); 
+    delayMicroseconds(750); 
   }
 
   Serial.println("Rail backward motion complete");
@@ -228,9 +230,9 @@ void moveAuger(int j) {
   digitalWrite(augerDir, LOW);
   for (int s = 0; s < numSteps; s++) {
     digitalWrite(augerStep, HIGH); 
-    delayMicroseconds(500);
+    delayMicroseconds(5000);
     digitalWrite(augerStep, LOW); 
-    delayMicroseconds(500); 
+    delayMicroseconds(5000); 
   }
 
   Serial.print("Dispensed ");
