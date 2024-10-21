@@ -25,7 +25,7 @@ const int totalSpices = 10;
 // NEMA 11 for rail. Connected to X-step and X-dir
 #define railStep A0 
 #define railDir A1
-#define railSleep 4
+#define railSleep 6
 
 // NEMA 17 for carriage/ lazy susan. Connected to Y-step and Y-dir
 #define susanStep A6
@@ -35,7 +35,7 @@ const int totalSpices = 10;
 // NEMA 8 for auger. Connected to Z-step and Z-dir
 #define augerStep 46
 #define augerDir 48
-#define augerSleep 6
+#define augerSleep 4
 
 // Spice data arrays
 String spiceArray[10][2];
@@ -202,9 +202,9 @@ void moveSusan(int j) {
   digitalWrite(susanDir, LOW);
   for (int s = 0; s < numSteps; s++) {
     digitalWrite(susanStep, HIGH); 
-    delayMicroseconds(5000);
+    delayMicroseconds(7500);
     digitalWrite(susanStep, LOW); 
-    delayMicroseconds(5000); 
+    delayMicroseconds(7500); 
   }
 
   Serial.println("Spice carriage motion complete\n");
