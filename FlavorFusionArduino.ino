@@ -139,8 +139,6 @@ void sendOrderMixedStatus() {
   Serial.println("Order mixed status sent: ORDER_MIXED:1");
 }
 
-#include <algorithm> // For std::sort
-
 // Custom comparator function for sorting spiceArray
 bool compareSpices(const String a[2], const String b[2]) {
     return a[0].toInt() < b[0].toInt();
