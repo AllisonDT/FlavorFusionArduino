@@ -145,45 +145,45 @@ bool compareSpices(const String a[2], const String b[2]) {
 }
 
 void processReceivedIngredients(String data) {
-    int start = 0;
-    int separatorIndex = data.indexOf(';', start);
-    numSpicesOrdered = 0;
+  int start = 0;
+  int separatorIndex = data.indexOf(';', start);
+  numSpicesOrdered = 0;
 
-    while (separatorIndex != -1) {
-        String ingredientPair = data.substring(start, separatorIndex);
-        if (ingredientPair.length() > 0) {
-            int colonIndex = ingredientPair.indexOf(':');
-            if (colonIndex != -1) {
-                String ingredientID = ingredientPair.substring(0, colonIndex);
-                String ingredientAmount = ingredientPair.substring(colonIndex + 1);
+  while (separatorIndex != -1) {
+    String ingredientPair = data.substring(start, separatorIndex);
+    if (ingredientPair.length() > 0) {
+      int colonIndex = ingredientPair.indexOf(':');
+      if (colonIndex != -1) {
+        String ingredientID = ingredientPair.substring(0, colonIndex);
+        String ingredientAmount = ingredientPair.substring(colonIndex + 1);
 
-                // Ensure that the amount is properly parsed and valid
-                float amount = ingredientAmount.toFloat();
-                if (amount > 0) {
-                    spiceArray[numSpicesOrdered][0] = ingredientID;
-                    spiceArray[numSpicesOrdered][1] = ingredientAmount;
-                    numSpicesOrdered++;
+        // Ensure that the amount is properly parsed and valid
+        float amount = ingredientAmount.toFloat();
+        if (amount > 0) {
+          spiceArray[numSpicesOrdered][0] = ingredientID;
+          spiceArray[numSpicesOrdered][1] = ingredientAmount;
+          numSpicesOrdered++;
 
-                    Serial.print("Ingredient ID: ");
-                    Serial.print(ingredientID);
-                    Serial.print(", Amount: ");
-                    Serial.println(ingredientAmount);
-                } else {
-                    Serial.println("Received invalid ingredient amount, skipping.");
-                }
-            }
+          Serial.print("Ingredient ID: ");
+          Serial.print(ingredientID);
+          Serial.print(", Amount: ");
+          Serial.println(ingredientAmount);
+        } else {
+          Serial.println("Received invalid ingredient amount, skipping.");
         }
-        start = separatorIndex + 1;
-        separatorIndex = data.indexOf(';', start);
+      }
     }
+    start = separatorIndex + 1;
+    separatorIndex = data.indexOf(';', start);
+  }
 
-    // Sort spice array by ingredient ID (container number)
-    if (numSpicesOrdered > 0) {
-        std::sort(spiceArray, spiceArray + numSpicesOrdered, compareSpices);
-        isOrderMixed = false;
-    } else {
-        Serial.println("No valid ingredients found.");
-    }
+  // Sort spice array by ingredient ID (container number)
+  if (numSpicesOrdered > 0) {
+      std::sort(spiceArray, spiceArray + numSpicesOrdered, compareSpices);
+      isOrderMixed = false;
+  } else {
+      Serial.println("No valid ingredients found.");
+  }
 }
 
 void moveSusan(int j) {
