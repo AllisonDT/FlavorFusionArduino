@@ -25,17 +25,17 @@ const int totalSpices = 10;
 // NEMA 11 for rail. Connected to X-step and X-dir
 #define railStep A0 
 #define railDir A1
-#define railSleep 6
+#define railEn 38
 
 // NEMA 17 for carriage/ lazy susan. Connected to Y-step and Y-dir
 #define susanStep A6
 #define susanDir A7
-#define susanSleep 5
+#define susanEn A2
 
 // NEMA 8 for auger. Connected to Z-step and Z-dir
 #define augerStep 46
 #define augerDir 48
-#define augerSleep 4
+#define augerEn A8
 
 // Spice data arrays
 String spiceArray[10][2];
@@ -46,24 +46,18 @@ void setup() {
   // Set digital pins (and analog clones) to input/output
   pinMode(railStep, OUTPUT);
   pinMode(railDir, OUTPUT);
-  pinMode(railSleep, OUTPUT);
+  pinMode(railEn, OUTPUT);
   pinMode(susanStep, OUTPUT);
   pinMode(susanDir, OUTPUT);
-  pinMode(susanSleep, OUTPUT);
+  pinMode(susanEn, OUTPUT);
   pinMode(augerStep, OUTPUT);
   pinMode(augerDir, OUTPUT);
-  pinMode(augerSleep, OUTPUT);
-
-  // Motor driver start-up
-  digitalWrite(railSleep, HIGH);
-  digitalWrite(susanSleep, HIGH);
-  digitalWrite(augerSleep, HIGH);
-  delay(100);
+  pinMode(augerEn, OUTPUT);
 
   // Motor driver sleep
-  digitalWrite(railSleep, LOW);
-  digitalWrite(susanSleep, LOW);
-  digitalWrite(augerSleep, LOW);
+  digitalWrite(railEn, HIGH);
+  digitalWrite(susanEn, HIGH);
+  digitalWrite(augerEn, HIGH);
   
   // Initialize Serial Monitor and Bluetooth (HM-10)
   Serial.begin(9600);
@@ -196,8 +190,8 @@ void moveSusan(int j) {
   Serial.println(spiceArray[j][0]);
 
   // Exit sleep
-  digitalWrite(susanSleep, HIGH);
-  delay(5);
+  digitalWrite(susanEn, LOW);
+  delay(50);
 
   // Find previous spice container
   int prevSpice;
@@ -215,24 +209,24 @@ void moveSusan(int j) {
   digitalWrite(susanDir, LOW);
   for (int s = 0; s < numSteps; s++) {
     digitalWrite(susanStep, HIGH); 
-    delayMicroseconds(7500);
+    delayMicroseconds(5000);
     digitalWrite(susanStep, LOW); 
-    delayMicroseconds(7500); 
+    delayMicroseconds(5000); 
   }
 
   Serial.println("Spice carriage motion complete\n");
   delay(1000);
 
   // Enter sleep
-  digitalWrite(susanSleep, LOW);
+  digitalWrite(susanEn, HIGH);
 }
 
 void moveRailForward() {
   Serial.println("Moving rail forward");
 
   // Exit sleep
-  digitalWrite(railSleep, HIGH);
-  delay(5);
+  digitalWrite(railEn, LOW);
+  delay(50);
 
   // 20 revolutions for approx 0.75 in
   int numSteps = 20 * totalSteps;
@@ -252,15 +246,15 @@ void moveRailForward() {
   delay(1000);
 
   // Enter sleep
-  digitalWrite(railSleep, LOW);
+  digitalWrite(railEn, HIGH);
 }
 
 void moveRailBackward() {
   Serial.println("Moving rail backward");
 
   // Exit sleep
-  digitalWrite(railSleep, HIGH);
-  delay(5);
+  digitalWrite(railEn, LOW);
+  delay(50);
 
   // 20 revolutions for approx 0.75 in
   int numSteps = 20 * totalSteps;
@@ -277,15 +271,15 @@ void moveRailBackward() {
   delay(1000);
 
   // Enter sleep
-  digitalWrite(railSleep, LOW);
+  digitalWrite(railEn, HIGH);
 }
 
 void moveAuger(int j) {
   Serial.println("Moving auger");
 
   // Exit sleep
-  digitalWrite(augerSleep, HIGH);
-  delay(5);
+  digitalWrite(augerEn, LOW);
+  delay(50);
 
   // calculate number of steps
   float spiceAmount = spiceArray[j][1].toFloat();
@@ -307,7 +301,7 @@ void moveAuger(int j) {
   delay(1000);
 
   // Enter sleep
-  digitalWrite(augerSleep, LOW);
+  digitalWrite(augerEn, HIGH);
 }
 
 void calibrate() {
