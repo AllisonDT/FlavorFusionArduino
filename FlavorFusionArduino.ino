@@ -4,8 +4,6 @@
 // HM-10 TXD to Arduino Mega RX1 (Pin 19)
 // HM-10 RXD to Arduino Mega TX1 (Pin 18) (Use voltage divider to reduce 5V to 3.3V)
 
-#include <algorithm>
-
 // Variables
 String incomingString = "";
 bool isOrderMixed = true;     // Track whether the whole order is mixed
@@ -28,16 +26,19 @@ const int totalSpices = 10;
 #define railStep A0 
 #define railDir A1
 #define railSleep 6
+#define railEn 38
 
 // NEMA 17 for carriage/ lazy susan. Connected to Y-step and Y-dir
 #define susanStep A6
 #define susanDir A7
 #define susanSleep 5
+#define susanEn A2
 
 // NEMA 8 for auger. Connected to Z-step and Z-dir
 #define augerStep 46
 #define augerDir 48
 #define augerSleep 4
+#define augerEn A8
 
 // Spice data arrays
 String spiceArray[10][2];
@@ -49,12 +50,15 @@ void setup() {
   pinMode(railStep, OUTPUT);
   pinMode(railDir, OUTPUT);
   pinMode(railSleep, OUTPUT);
+  pinMode(railEn, OUTPUT);
   pinMode(susanStep, OUTPUT);
   pinMode(susanDir, OUTPUT);
   pinMode(susanSleep, OUTPUT);
+  pinMode(susanEn, OUTPUT);
   pinMode(augerStep, OUTPUT);
   pinMode(augerDir, OUTPUT);
   pinMode(augerSleep, OUTPUT);
+  pinMode(augerEn, OUTPUT);
 
   // Motor driver start-up
   digitalWrite(railSleep, HIGH);
@@ -139,11 +143,6 @@ void sendOrderMixedStatus() {
   Serial.println("Order mixed status sent: ORDER_MIXED:1");
 }
 
-// Custom comparator function for sorting spiceArray
-bool compareSpices(const String a[2], const String b[2]) {
-    return a[0].toInt() < b[0].toInt();
-}
-
 void processReceivedIngredients(String data) {
   int start = 0;
   int separatorIndex = data.indexOf(';', start);
@@ -177,9 +176,21 @@ void processReceivedIngredients(String data) {
     separatorIndex = data.indexOf(';', start);
   }
 
-  // Sort spice array by ingredient ID (container number)
+  // Bubble sort spice array to ascending container number
+  for (uint8_t c = 0; c < numSpicesOrdered - 1; c++) { // loop thru container numbers
+    for (uint8_t d = 0; d < numSpicesOrdered - c - 1; d++) { // loop thru successive containers
+      if (spiceArray[d][0].toInt() > spiceArray[d + 1][0].toInt()) { // compare
+        for (uint8_t e = 0; e < 2; e++) {  // swap both container numbers and amounts
+          String tempval = spiceArray[d][e];
+          spiceArray[d][e] = spiceArray[d + 1][e]; 
+          spiceArray[d + 1][e] = tempval;
+        }
+      }
+    }
+  }
+
+  // After processing all ingredients, mark the order as ready to be mixed
   if (numSpicesOrdered > 0) {
-    std::sort(spiceArray, spiceArray + numSpicesOrdered, compareSpices);
     isOrderMixed = false;
   } else {
     Serial.println("No valid ingredients found.");
@@ -210,9 +221,9 @@ void moveSusan(int j) {
   digitalWrite(susanDir, LOW);
   for (int s = 0; s < numSteps; s++) {
     digitalWrite(susanStep, HIGH); 
-    delayMicroseconds(7500);
+    delayMicroseconds(500);
     digitalWrite(susanStep, LOW); 
-    delayMicroseconds(7500); 
+    delayMicroseconds(500); 
   }
 
   Serial.println("Spice carriage motion complete\n");
