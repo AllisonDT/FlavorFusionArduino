@@ -4,6 +4,8 @@
 // HM-10 TXD to Arduino Mega RX1 (Pin 19)
 // HM-10 RXD to Arduino Mega TX1 (Pin 18) (Use voltage divider to reduce 5V to 3.3V)
 
+#include "U8glib.h" // For LCD
+
 // Variables
 String incomingString = "";
 bool isOrderMixed = true;     // Track whether the whole order is mixed
@@ -22,15 +24,15 @@ const int totalSteps = 200; // 200 steps per revolution
 const int totalMicrosteps = 3200; // 1/16 microstepping: 3200 steps per revolution
 const int totalSpices = 10;
 
-// NEMA 11 for rail. Connected to X-step and X-dir
-#define railStep A0 
-#define railDir A1
-#define railEn 38
+// NEMA 11 for rail. Connected to Y-step and Y-dir (needed for direction pin)
+#define railStep A6
+#define railDir A7
+#define railEn A2
 
-// NEMA 17 for carriage/ lazy susan. Connected to Y-step and Y-dir
-#define susanStep A6
-#define susanDir A7
-#define susanEn A2
+// NEMA 17 for carriage/ lazy susan. Connected to X-step and X-dir (don't need direction pin)
+#define susanStep A0
+#define susanDir A1
+#define susanEn 38
 
 // NEMA 8 for auger. Connected to Z-step and Z-dir
 #define augerStep 46
@@ -40,6 +42,24 @@ const int totalSpices = 10;
 // Spice data arrays
 String spiceArray[10][2];
 int spiceIndex[10][2];
+
+// Define LCD pins
+#define LCD_SCK 23 // SPI Com: SCK = en = 23 (LCD d4)
+#define LCD_MOSI 17 // MOSI = rw = 17 (enable)
+#define LCD_CS 16 // CS = di = 16 (rs)
+#define LCD_DT 31 // rotary encoder pin 1, data (digital input)
+#define LCD_CLK 33 // rotary encoder pin 2, clock (direction)
+#define LCD_push 35 // rotary encoder push button
+#define LCD_stop 41 // LCD stop button
+#define LCD_beeper 37 // beeper on the LCD shield
+
+// Define LCD Object
+U8GLIB_ST7920_128X64_1X u8g(LCD_SCK, LCD_MOSI, LCD_CS);
+
+// LCD variables
+bool menu_redraw_required = 0;
+int encoderValue = 0;  // Count of encoder turns and cursor position
+bool lastStateA = HIGH; // Previous state of encoder pin A
 
 
 void setup() {
@@ -53,18 +73,29 @@ void setup() {
   pinMode(augerStep, OUTPUT);
   pinMode(augerDir, OUTPUT);
   pinMode(augerEn, OUTPUT);
+  pinMode(LCD_DT, INPUT_PULLUP);
+  pinMode(LCD_CLK, INPUT_PULLUP);
+  pinMode(LCD_push, INPUT_PULLUP);
+  pinMode(LCD_stop, INPUT_PULLUP);
+  pinMode(LCD_beeper, OUTPUT);
+
+  analogWrite(LCD_beeper, 0); // start beeper silent
 
   // Motor driver sleep
   digitalWrite(railEn, HIGH);
   digitalWrite(susanEn, HIGH);
   digitalWrite(augerEn, HIGH);
   
-  // Initialize Serial Monitor and Bluetooth (HM-10)
-  Serial.begin(9600);
-  Serial1.begin(9600);   // for HM-10 communication
+  // Initialize Bluetooth (HM-10)
+  Serial1.begin(9600);
 
-  Serial.println("HM-10 Bluetooth Module Test");
-  Serial.println("Waiting for incoming data from HM-10...");
+  u8g.setColorIndex(1);      // Set color to white  
+
+  // Setup picture loop
+  u8g.firstPage();
+  do {
+    drawSetup();
+  } while( u8g.nextPage());
 }
 
 void loop() {
@@ -80,7 +111,7 @@ void loop() {
         incomingString.replace("#END", "");
         incomingString.trim();
 
-        Serial.println("Complete data received from BLE:");
+        Serial.println("Complete data received from BLE:"); // *** LCD***
         Serial.println(incomingString);
 
         processReceivedIngredients(incomingString); // Process the complete command
@@ -89,14 +120,20 @@ void loop() {
     }
   }
 
+  // Check if data is available from LCD
+  /*
+  updateLCD();
+  */
+
   // Process spice data if the order has been received and not mixed
   if (!isOrderMixed) {
+    // calibrate carriage position
+    calibrate();
+    
     // Loop through all requested spices
     for (int j = 0; j < numSpicesOrdered; j++) {
       // Check if the spice amount is valid before proceeding
       if (spiceArray[j][1].toFloat() > 0) {
-        Serial.println("\n========================================");
-
         // Move susan to the requested spice
         moveSusan(j);
 
@@ -109,12 +146,17 @@ void loop() {
         // Move rail back
         moveRailBackward();
       } else {
-        Serial.println("Invalid spice amount, skipping this spice.");
+
+        u8g.firstPage();
+        do{
+          u8g.drawStr(0, 0, "Invalid spice amount");
+          int h = u8g.getFontAscent() - u8g.getFontDescent();
+          u8g.drawStr(0, h+1, "Skipping this spice");
+        } while(u8g.nextPage());
+
       }
     }
-
-    // Recalibrate after processing all spices
-    calibrate();  
+ 
     isOrderMixed = true; // Mark the order as complete
 
     // Send "ORDER_MIXED:1" to Bluetooth app to indicate the order is mixed
@@ -128,7 +170,15 @@ void loop() {
 void sendOrderMixedStatus() {
   // Send the message to the Bluetooth app indicating the order is mixed
   Serial1.println("ORDER_MIXED:1");
-  Serial.println("Order mixed status sent: ORDER_MIXED:1");
+
+  // quick beep for user
+  analogWrite(LCD_beeper, 512);
+  delay(1000);
+  analogWrite(LCD_beeper, 0);
+
+  // Finished job picture loop
+  drawSummary();
+  
 }
 
 void processReceivedIngredients(String data) {
@@ -151,12 +201,12 @@ void processReceivedIngredients(String data) {
           spiceArray[numSpicesOrdered][1] = ingredientAmount;
           numSpicesOrdered++;
 
-          Serial.print("Ingredient ID: ");
+          Serial.print("Ingredient ID: "); // ***LCD***
           Serial.print(ingredientID);
           Serial.print(", Amount: ");
           Serial.println(ingredientAmount);
         } else {
-          Serial.println("Received invalid ingredient amount, skipping.");
+          Serial.println("Received invalid ingredient amount, skipping."); // ***LCD***
         }
       }
     }
@@ -181,13 +231,18 @@ void processReceivedIngredients(String data) {
   if (numSpicesOrdered > 0) {
     isOrderMixed = false;
   } else {
-    Serial.println("No valid ingredients found.");
+    Serial.println("No valid ingredients found."); // ***LCD***
   }
 }
 
 void moveSusan(int j) {
-  Serial.print("Moving to container #");
-  Serial.println(spiceArray[j][0]);
+  // Susan picture loop
+  u8g.firstPage();
+  do {
+    u8g.drawStr(0, 0, "Moving to container #");
+    int w = u8g.getStrPixelWidth("Moving to container #");
+    u8g.drawStr(w+1, 0, spiceArray[j][0].c_str()); // convert String object to const char*
+  } while( u8g.nextPage());
 
   // Exit sleep
   digitalWrite(susanEn, LOW);
@@ -209,12 +264,17 @@ void moveSusan(int j) {
   digitalWrite(susanDir, LOW);
   for (int s = 0; s < numSteps; s++) {
     digitalWrite(susanStep, HIGH); 
-    delayMicroseconds(5000);
+    delayMicroseconds(7500);
     digitalWrite(susanStep, LOW); 
-    delayMicroseconds(5000); 
+    delayMicroseconds(7500); 
   }
 
-  Serial.println("Spice carriage motion complete\n");
+  // Finished susan picture loop
+  u8g.firstPage();
+  do {
+    u8g.drawStr(0, 0, "Carriage Motion Complete");
+  } while( u8g.nextPage());
+
   delay(1000);
 
   // Enter sleep
@@ -222,15 +282,20 @@ void moveSusan(int j) {
 }
 
 void moveRailForward() {
-  Serial.println("Moving rail forward");
+  // Rail fwd picture loop
+  u8g.firstPage();
+  do {
+    u8g.drawStr(0, 0, "Moving rail forward");
+  } while( u8g.nextPage());
 
   // Exit sleep
   digitalWrite(railEn, LOW);
   delay(50);
 
   // 20 revolutions for approx 0.75 in
-  int numSteps = 20 * totalSteps;
+  int numSteps = 10 * totalSteps;
   digitalWrite(railDir, LOW);
+  delay(50);
 
   // Eventually change this to be based on lim switch
 
@@ -242,7 +307,13 @@ void moveRailForward() {
     delayMicroseconds(750); 
   }
 
-  Serial.println("Rail forward motion complete\n");
+  // Finished rail picture loop
+  u8g.firstPage();
+  do {
+    u8g.drawStr(0, 0, "Rail forward motion");
+    int h = u8g.getFontAscent() - u8g.getFontDescent();
+    u8g.drawStr(0, h+1, "complete");
+  } while( u8g.nextPage());
   delay(1000);
 
   // Enter sleep
@@ -250,15 +321,20 @@ void moveRailForward() {
 }
 
 void moveRailBackward() {
-  Serial.println("Moving rail backward");
+  // Rail backward picture loop
+  u8g.firstPage();
+  do {
+    u8g.drawStr(0, 0, "Moving rail backward");
+  } while( u8g.nextPage());
 
   // Exit sleep
   digitalWrite(railEn, LOW);
   delay(50);
 
   // 20 revolutions for approx 0.75 in
-  int numSteps = 20 * totalSteps;
+  int numSteps = 10 * totalSteps;
   digitalWrite(railDir, HIGH);
+  delay(50);
 
   for (int s = 0; s < numSteps; s++) {
     digitalWrite(railStep, HIGH); 
@@ -267,7 +343,13 @@ void moveRailBackward() {
     delayMicroseconds(750); 
   }
 
-  Serial.println("Rail backward motion complete\n");
+  // Finished rail picture loop
+  u8g.firstPage();
+  do {
+    u8g.drawStr(0, 0, "Rail backward motion");
+    int h = u8g.getFontAscent() - u8g.getFontDescent();
+    u8g.drawStr(0, h+1, "complete");
+  } while( u8g.nextPage());
   delay(1000);
 
   // Enter sleep
@@ -275,7 +357,11 @@ void moveRailBackward() {
 }
 
 void moveAuger(int j) {
-  Serial.println("Moving auger");
+  // Auger picture loop
+  u8g.firstPage();
+  do {
+    u8g.drawStr(0, 0, "Moving auger");
+  } while( u8g.nextPage());
 
   // Exit sleep
   digitalWrite(augerEn, LOW);
@@ -283,7 +369,7 @@ void moveAuger(int j) {
 
   // calculate number of steps
   float spiceAmount = spiceArray[j][1].toFloat();
-  int revPerOz = 20;
+  int revPerOz = 10;
   int numSteps = spiceAmount * revPerOz * totalSteps;
 
   // Actuate
@@ -295,9 +381,16 @@ void moveAuger(int j) {
     delayMicroseconds(5000); 
   }
 
-  Serial.print("Dispensed ");
-  Serial.print(spiceAmount);
-  Serial.println(" ounces of spice\n");
+  // Finished auger picture loop
+  u8g.firstPage();
+  do {
+    u8g.drawStr(0, 0, "Dispensed ");
+    int w = u8g.getStrPixelWidth("Dispensed ");
+    u8g.drawStr(w, 0, spiceArray[j][1].c_str()); // convert String object to const char*
+    int h = u8g.getFontAscent() - u8g.getFontDescent();
+    u8g.drawStr(0, h+1, "oz of spice");
+  } while( u8g.nextPage());
+
   delay(1000);
 
   // Enter sleep
@@ -305,5 +398,71 @@ void moveAuger(int j) {
 }
 
 void calibrate() {
-  isSusanRotated = 0;
+  isSusanRotated = 0; 
+
+  // Calibration picture loop
+  u8g.firstPage();
+  do {
+    u8g.drawStr(0, 0, "Calibrating...");
+  } while( u8g.nextPage());  
+
+  delay(2000); // Remove this line!!!
+}
+
+void drawSetup() {
+  uint8_t h;
+  
+  u8g.setFont(u8g_font_5x8);
+  u8g.setFontRefHeightText(); // calculate font height based on text only
+  u8g.setFontPosTop(); // reference lines from top left instead of bottom left
+
+  h = u8g.getFontAscent()-u8g.getFontDescent(); // font height
+
+  u8g.drawStr( 0, 0, "HM-10 BLE Module Test");  
+  u8g.drawStr( 0, h+1, "Waiting for data...");
+}
+
+void updateLCD() {
+  // Read the current state of the encoder pins
+  bool currentStateA = digitalRead(LCD_DT);
+  bool currentStateB = digitalRead(LCD_CLK);
+
+  // Determine if new input is received (LOW)
+  if (lastStateA == HIGH && currentStateA == LOW) {
+    // change cursor position based on direction of B
+    encoderValue += (currentStateB == HIGH) ? 1 : -1;
+    menu_redraw_required = 1;
+
+    // Keep cursor in menu bounds
+    if(encoderValue >= totalSpices){
+      encoderValue = 0;
+      delay(50); // slight delay to avoid jitter 
+    }
+    else if(encoderValue < 0){
+      encoderValue = totalSpices-1;
+      delay(50); // slight delay to avoid jitter 
+    }
+  }
+
+  // Update last state
+  lastStateA = currentStateA;
+}
+
+void drawSummary() {
+  u8g.firstPage();
+  do {
+    u8g.drawStr(0, 0, "Complete! Stay Spicy!");
+    int h = u8g.getFontAscent() - u8g.getFontDescent();
+    u8g.drawStr(0, h+1, "Spice");
+    u8g.drawStr(64, h+1, "Amount (oz)");
+    u8g.drawHLine(0, 2*h+2, 128);
+
+    for(int j = 0; j < numSpicesOrdered; j++) {
+      u8g.drawStr(0, (j+2)*h+3, spiceArray[j][0].c_str()); // convert String object to const char*
+      u8g.drawStr(64, (j+2)*h+3, spiceArray[j][1].c_str());
+    }
+
+    // eventually add a cursor to fit all spices on screen and allow user navigation
+
+  } while( u8g.nextPage());
 }
