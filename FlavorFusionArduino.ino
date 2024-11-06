@@ -126,19 +126,21 @@ void setup() {
 
 void loop() {
   // Check if data is available from HM-10 (BLE central device)
-  if (Serial1.available()) {
-    while (Serial1.available()) {
-      char c = Serial1.read();
-      incomingString += c;
+  if(currentMenu == 0){
+    if (Serial1.available()) {
+      while (Serial1.available()) {
+        char c = Serial1.read();
+        incomingString += c;
 
-      // Check if data contains the end marker "#END"
-      if (incomingString.indexOf("#END") != -1) {
-        // Remove the end marker and trim the data
-        incomingString.replace("#END", "");
-        incomingString.trim();
+        // Check if data contains the end marker "#END"
+        if (incomingString.indexOf("#END") != -1) {
+          // Remove the end marker and trim the data
+          incomingString.replace("#END", "");
+          incomingString.trim();
 
-        processReceivedIngredients(incomingString); // Process the complete command
-        incomingString = ""; // Clear the buffer
+          processReceivedIngredients(incomingString); // Process the complete command
+          incomingString = ""; // Clear the buffer
+        }
       }
     }
   }
@@ -219,7 +221,9 @@ void loop() {
   }
 
   // Small delay to prevent overwhelming the BLE connection
-  delay(100);
+  if(currentMenu == 0){
+    delay(100);
+  }
 }
 
 void sendOrderMixedStatus() {
@@ -505,16 +509,65 @@ void drawSetup() {
 
 void updateLCD() {
   // Read the current state of the encoder pins
-  int currentStateA = digitalRead(LCD_DT);
-  int currentStateB = digitalRead(LCD_CLK);
+  // bool currentStateA = digitalRead(LCD_DT);
+  // bool currentStateB = digitalRead(LCD_CLK);
 
-  // Determine if new input is received (LOW)
-  if (lastStateA == HIGH && currentStateA == LOW) {
-    // change cursor position based on direction of B
-    encoderValue += (currentStateB == HIGH) ? 1 : -1;
-    //delay(100); // slight delay for smoothness. Consider changing this to debounce delay
-    menu_redraw_required = 1;
+  static uint8_t state = 0;
+  bool CLKstate = digitalRead(LCD_CLK);
+  bool DTstate = digitalRead(LCD_DT);
+  switch (state) {
+      case 0:                         // Idle state, encoder not turning
+          if (!CLKstate){             // Turn CCW and CLK goes low first
+              state = 1;
+          } else if (!DTstate) {      // Turn CW and DT goes low first
+              state = 4;
+          }
+          break;
+      // CCW rotation
+      case 1:                     
+          if (!DTstate) {             // Continue CCW and DT will go low after CLK
+              state = 2;
+          } 
+          break;
+      case 2:
+          if (CLKstate) {             // Turn further and CLK will go high first
+              state = 3;
+          }
+          break;
+      case 3:
+          if (CLKstate && DTstate) {  // Both CLK and DT now high as the encoder completes one step CCW
+              state = 0;
+              encoderValue--;
+              menu_redraw_required = 1;
+          }
+          break;
+      // CW rotation
+      case 4:                         // As for CCW but with CLK and DT reversed
+          if (!CLKstate) {
+              state = 5;
+          }
+          break;
+      case 5:
+          if (DTstate) {
+              state = 6;
+          }
+          break;
+      case 6:
+          if (CLKstate && DTstate) {
+              state = 0;
+              encoderValue++;
+              menu_redraw_required = 1;
+          }
+          break; 
+  }
 
+  // // Determine if new input is received (LOW)
+  // if (lastStateA == HIGH && currentStateA == LOW) {
+  //   // change cursor position based on direction of B
+  //   encoderValue += (currentStateB == HIGH) ? 1 : -1;
+  //   //delay(100); // slight delay for smoothness. Consider changing this to debounce delay
+    
+  if(menu_redraw_required){
     // Keep cursor in menu bounds
     if(currentMenu==1){
       // Spice menu bounds
@@ -548,7 +601,7 @@ void updateLCD() {
   }
 
   // Update last state
-  lastStateA = currentStateA;
+  // lastStateA = currentStateA;
 
   // Read encoder button
   pushState = digitalRead(LCD_push);
