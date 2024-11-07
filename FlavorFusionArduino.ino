@@ -231,7 +231,7 @@ void sendOrderMixedStatus() {
   Serial1.println("ORDER_MIXED:1");
 
   // quick beep for user
-  analogWrite(LCD_beeper, 256); // comment out for quiet mode
+  // analogWrite(LCD_beeper, 256); // comment out for quiet mode
   delay(1000);
   analogWrite(LCD_beeper, 0);
 
@@ -487,6 +487,7 @@ void drawSetup() {
   u8g.setFont(u8g_font_5x8);
   u8g.setFontRefHeightText(); // calculate font height based on text only
   u8g.setFontPosTop(); // reference lines from top left instead of bottom left
+  u8g.setDefaultForegroundColor();
 
   h = u8g.getFontAscent()-u8g.getFontDescent(); // font height
   w = u8g.getWidth();
@@ -707,6 +708,8 @@ void drawSummary() {
   do {
     uint8_t j, h;
     u8g_uint_t w, d;
+
+    u8g.setDefaultForegroundColor();
     
     w = u8g.getWidth();
     d = (w-u8g.getStrWidth("Blending complete!"))/2;
@@ -721,6 +724,12 @@ void drawSummary() {
     u8g.drawHLine(0, 3*h+2, 128);
 
     for(j = 0; j < numSpicesOrdered; j++) {
+
+      u8g.setDefaultForegroundColor();
+      if ( j == encoderValue ) {
+        u8g.drawBox(0, (j+3)*h+3, w, h);
+        u8g.setDefaultBackgroundColor();
+      }
       u8g.drawStr(0, (j+3)*h+3, spiceArray[j][0].c_str()); // convert String object to const char*
 
       // Find decimal point index
