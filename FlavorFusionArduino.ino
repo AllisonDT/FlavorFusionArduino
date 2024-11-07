@@ -750,18 +750,31 @@ void drawSpiceMenu() {
   
   h = u8g.getFontAscent()-u8g.getFontDescent(); // text height
   w = u8g.getWidth(); // screen width
-  for( i = 0; i < totalSpices; i++ ) {
-    d = (w-u8g.getStrWidth(menu_strings[i]))/2;
-    u8g.setDefaultForegroundColor();
-    if ( i == encoderValue ) {
-      u8g.drawBox(0, i*h+1, w, h);
-      u8g.setDefaultBackgroundColor();
+
+  // if cursor is in range, display normal list
+  if(encoderValue <= spiceListMax){
+    for( i = 0; i < totalSpices; i++ ) {
+      d = (w-u8g.getStrWidth(menu_strings[i]))/2;
+      u8g.setDefaultForegroundColor();
+      if ( i == encoderValue ) {
+        u8g.drawBox(0, i*h+1, w, h);
+        u8g.setDefaultBackgroundColor();
+      }
+      u8g.drawStr(d, i*h, menu_strings[i]);
     }
-    u8g.drawStr(d, i*h, menu_strings[i]);
-
-    // ADD LIST CASCADE 
-
+  }else{
+    // if cursor is out of range, shift menu up
+    for( i = 0; i < totalSpices; i++ ) {
+      d = (w-u8g.getStrWidth(menu_strings[i+(encoderValue-spiceListMax)]))/2;
+      u8g.setDefaultForegroundColor();
+      if ( i == spiceListMax ) {
+        u8g.drawBox(0, i*h+1, w, h);
+        u8g.setDefaultBackgroundColor();
+      }
+      u8g.drawStr(d, i*h, menu_strings[i+(encoderValue-spiceListMax)]);
+    }
   }
+
 }
 
 void drawAmountMenu(){
