@@ -90,6 +90,8 @@ const char *spicySaying[5] = {"Have a spicy day!",
         "Keep it spicy!"};
 long randomNumber; // for random spicy saying
 
+bool isSpiceSelected[totalSpices] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
 
 void setup() {
   // Set digital pins (and analog clones) to input/output
@@ -561,12 +563,6 @@ void updateLCD() {
           }
           break; 
   }
-
-  // // Determine if new input is received (LOW)
-  // if (lastStateA == HIGH && currentStateA == LOW) {
-  //   // change cursor position based on direction of B
-  //   encoderValue += (currentStateB == HIGH) ? 1 : -1;
-  //   //delay(100); // slight delay for smoothness. Consider changing this to debounce delay
     
   if(menu_redraw_required){
     // Keep cursor in menu bounds
@@ -601,9 +597,6 @@ void updateLCD() {
       }
   }
 
-  // Update last state
-  // lastStateA = currentStateA;
-
   // Read encoder button
   pushState = digitalRead(LCD_push);
   // If button is not pressed, reset counter
@@ -622,6 +615,9 @@ void updateLCD() {
         processReceivedIngredients(tempSpiceString); // process data into spiceArray
         tempSpiceString = ""; // clear buffer
         pushCount = 1; // prevent button bouncing
+        for(int i=0; i<totalSpices; i++){
+          isSpiceSelected[i]  = 0; // reset
+        }
       }else{
       tempSpiceNumber = encoderValue; // save selected spice into buffer
       currentMenu++; // advance from spice menu to amount menu
@@ -650,6 +646,7 @@ void updateLCD() {
     }else if(currentMenu == 2 && amountColumn == 3){
       tempSpiceString += String(tempSpiceNumber) + ":"; // store spice number and amount 
       tempSpiceString += String((tempSpiceInt + tempSpiceFraction) / tempSpiceDivider) + ";";
+      isSpiceSelected[tempSpiceNumber-1] = 1; // list spice as selected to display check mark
       tempSpiceNumber = 0; // clear buffer
       tempSpiceInt = 0;
       tempSpiceFraction = 0.0;
@@ -780,6 +777,19 @@ void drawSpiceMenu() {
   h = u8g.getFontAscent()-u8g.getFontDescent(); // text height
   w = u8g.getWidth(); // screen width
 
+  uint8_t checkWidth = 8;
+  uint8_t checkHeight = 8;
+  const uint8_t checkmark_bits[] = {
+    0x00,  // Row 0
+    0x01,  // Row 1
+    0x02,  // Row 2
+    0x04,  // Row 3
+    0x88,  // Row 4
+    0x50,  // Row 5
+    0x20,  // Row 6
+    0x00   // Row 7
+    };
+
   // if cursor is in range, display normal list
   if(encoderValue <= spiceListMax){
     for( i = 0; i < totalSpices; i++ ) {
@@ -790,6 +800,10 @@ void drawSpiceMenu() {
         u8g.setDefaultBackgroundColor();
       }
       u8g.drawStr(d, i*h, menu_strings[i]);
+
+      if(isSpiceSelected[i-1]){
+        u8g.drawBitmap(d-10, (i)*h, checkWidth/8, checkHeight, checkmark_bits);
+      }
     }
   }else{
     // if cursor is out of range, shift menu up
@@ -801,6 +815,10 @@ void drawSpiceMenu() {
         u8g.setDefaultBackgroundColor();
       }
       u8g.drawStr(d, i*h, menu_strings[i+(encoderValue-spiceListMax)]);
+
+      if(isSpiceSelected[i-1+(encoderValue-spiceListMax)]){
+        u8g.drawBitmap(d-10, (i)*h, checkWidth/8, checkHeight, checkmark_bits);
+      }
     }
   }
 
