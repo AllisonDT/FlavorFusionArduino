@@ -64,7 +64,7 @@ bool lastStateA = HIGH; // Previous state of encoder pin A
 uint8_t amountColumn = 0; // 0: spice integer,   1: spice fraction,   2: spice unit,   3: confirm
 uint8_t maxBound = 1; // max index for a menu
 uint8_t spiceListMax = 8; // maximum list capacity, to determine screen update
-uint8_t summaryListMax = 5;
+uint8_t summaryListMax = 4;
 uint8_t currentMenu = 0; // 0: setup menu,   1: spice menu,   2: amount menu,   3: summary menu
 unsigned long lastSummaryTime = 0; // time (millis) of last summary menu. For auto timeout.
 unsigned long currentTime;
@@ -126,24 +126,24 @@ void setup() {
 
 void loop() {
   // Check if data is available from HM-10 (BLE central device)
-  if(currentMenu == 0){
-    if (Serial1.available()) {
-      while (Serial1.available()) {
-        char c = Serial1.read();
-        incomingString += c;
 
-        // Check if data contains the end marker "#END"
-        if (incomingString.indexOf("#END") != -1) {
-          // Remove the end marker and trim the data
-          incomingString.replace("#END", "");
-          incomingString.trim();
+  if (currentMenu == 0 && Serial1.available()) {
+    while (Serial1.available()) {
+      char c = Serial1.read();
+      incomingString += c;
 
-          processReceivedIngredients(incomingString); // Process the complete command
-          incomingString = ""; // Clear the buffer
-        }
+      // Check if data contains the end marker "#END"
+      if (incomingString.indexOf("#END") != -1) {
+        // Remove the end marker and trim the data
+        incomingString.replace("#END", "");
+        incomingString.trim();
+
+        processReceivedIngredients(incomingString); // Process the complete command
+        incomingString = ""; // Clear the buffer
       }
     }
   }
+  
 
   // Update current LCD menu
   if(menu_redraw_required){
@@ -723,27 +723,47 @@ void drawSummary() {
     u8g.drawStr(64, 2*h+1, "Amount (oz)");
     u8g.drawHLine(0, 3*h+2, 128);
 
-    for(j = 0; j < numSpicesOrdered; j++) {
+    // if cursor is in range, display the normal list
+    if(encoderValue <= summaryListMax){
+      for(j = 0; j < numSpicesOrdered; j++) {
+        u8g.setDefaultForegroundColor();
+        
+        if ( j == encoderValue ) {
+          u8g.drawBox(0, (j+3)*h+3, w, h);
+          u8g.setDefaultBackgroundColor();
+        }
+        u8g.drawStr(0, (j+3)*h+3, spiceArray[j][0].c_str()); // convert String object to const char*
 
-      u8g.setDefaultForegroundColor();
-      if ( j == encoderValue ) {
-        u8g.drawBox(0, (j+3)*h+3, w, h);
-        u8g.setDefaultBackgroundColor();
+        // Find decimal point index
+        int decimalIndex = spiceArray[j][1].indexOf('.');
+        // Truncate string after 5 decimal places
+        String truncatedString = spiceArray[j][1].substring(0, decimalIndex+6);
+        // convert String object to const char*
+        const char *truncatedAmount = truncatedString.c_str();
+
+        u8g.drawStr(64, (j+3)*h+3, truncatedAmount);
       }
-      u8g.drawStr(0, (j+3)*h+3, spiceArray[j][0].c_str()); // convert String object to const char*
+    }else{
+      // if cursor is out of range, shift screen up
+      for(j = 0; j < numSpicesOrdered; j++) {
+        u8g.setDefaultForegroundColor();
+        
+        if ( j == summaryListMax ) {
+          u8g.drawBox(0, (j+3)*h+3, w, h);
+          u8g.setDefaultBackgroundColor();
+        }
+        u8g.drawStr(0, (j+3)*h+3, spiceArray[j+(encoderValue-summaryListMax)][0].c_str()); // convert String object to const char*
 
-      // Find decimal point index
-      int decimalIndex = spiceArray[j][1].indexOf('.');
-      // Truncate string after 5 decimal places
-      String truncatedString = spiceArray[j][1].substring(0, decimalIndex+6);
-      // convert String object to const char*
-      const char *truncatedAmount = truncatedString.c_str();
+        // Find decimal point index
+        int decimalIndex = spiceArray[j][1].indexOf('.');
+        // Truncate string after 5 decimal places
+        String truncatedString = spiceArray[j+(encoderValue-summaryListMax)][1].substring(0, decimalIndex+6);
+        // convert String object to const char*
+        const char *truncatedAmount = truncatedString.c_str();
 
-      u8g.drawStr(64, (j+3)*h+3, truncatedAmount);
+        u8g.drawStr(64, (j+3)*h+3, truncatedAmount);
+      }
     }
-
-    // eventually add a cursor to fit all spices on screen and allow user navigation
-
   } while( u8g.nextPage());
 
   lastSummaryTime = millis();
