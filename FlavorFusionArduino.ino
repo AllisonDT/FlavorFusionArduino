@@ -15,6 +15,8 @@ bool isSusanRotated = 0; // Note: can prolly remove this since we'll calibrate e
 bool isRailForward = 0; // Note: can prolly remove this
 int numSpicesOrdered;         // Number of spices in current job
 bool isOrderInput = 0; // Note: can prolly remove this
+bool isTrayRemoved = 0;
+bool isTrayReplaced = 0; //Note: can prolly remove this
 
 // Variables to track previous states
 bool prevIsOrderMixed = false;
@@ -39,6 +41,12 @@ const int totalSpices = 10;
 #define augerStep 46
 #define augerDir 48
 #define augerEn A8
+
+// Drop Zone limit switch on Xmin pins
+#define dropZoneLimit 3
+
+// Calibration limit switch on Xmax pins
+#define calibrationLimit 2
 
 // Spice data arrays
 String spiceArray[10][2];
@@ -109,6 +117,8 @@ void setup() {
   pinMode(LCD_push, INPUT_PULLUP);
   pinMode(LCD_stop, INPUT_PULLUP);
   pinMode(LCD_beeper, OUTPUT);
+  pinMode(dropZoneLimit, INPUT_PULLUP);
+  pinMode(calibrationLimit, INPUT_PULLUP);
 
   analogWrite(LCD_beeper, 0); // start beeper silent
 
@@ -146,7 +156,6 @@ void loop() {
     }
   }
   
-
   // Update current LCD menu
   if(menu_redraw_required){
     u8g.firstPage();
@@ -184,48 +193,99 @@ void loop() {
     }
   }
 
+  // check for drop zone cup presence before moving motors
+  int reading = senseDropZone();
+
   // Process spice data if the order has been received and not mixed
   if (!isOrderMixed) {
-    // calibrate carriage position
-    calibrate();
+    // ensure limit switch is LOW and tray is empty
+    if(!reading && isTrayEmpty){
 
-    // Loop through all requested spices
-    for (int j = 0; j < numSpicesOrdered; j++) {
-      // Check if the spice amount is valid before proceeding
-      if (spiceArray[j][1].toFloat() > 0) {
-        // Move susan to the requested spice
-        moveSusan(j);
+      // calibrate carriage position
+      calibrate();
 
-        // Move rail forward
-        moveRailForward();
+      // Loop through all requested spices
+      for (int j = 0; j < numSpicesOrdered; j++) {
+        // Check if the spice amount is valid before proceeding
+        if (spiceArray[j][1].toFloat() > 0) {
+          // Move susan to the requested spice
+          moveSusan(j);
 
-        // Move auger for requested amount
-        moveAuger(j);
+          // Move rail forward
+          moveRailForward();
 
-        // Move rail back
-        moveRailBackward();
-      } else {
+          // Move auger for requested amount
+          moveAuger(j);
 
-        u8g.firstPage();
-        do{
-          u8g.drawStr(0, 0, "Invalid spice amount");
-          int h = u8g.getFontAscent() - u8g.getFontDescent();
-          u8g.drawStr(0, h+1, "Skipping this spice");
-        } while(u8g.nextPage());
+          // Move rail back
+          moveRailBackward();
+        } else {
 
+          u8g.firstPage();
+          do{
+            u8g.drawStr(0, 0, "Invalid spice amount");
+            int h = u8g.getFontAscent() - u8g.getFontDescent();
+            u8g.drawStr(0, h+1, "Skipping this spice");
+          } while(u8g.nextPage());
+
+        }
       }
+
+      isOrderMixed = true; // Mark the order as complete
+
+      // Send "ORDER_MIXED:1" to Bluetooth app to indicate the order is mixed
+      sendOrderMixedStatus();
+      sendTrayStatus(false);
+    }else if(reading){
+      // warn user to reload cup
+    }else if(!isTrayEmpty){
+      // warn user to empty tray
     }
-
-    isOrderMixed = true; // Mark the order as complete
-
-    // Send "ORDER_MIXED:1" to Bluetooth app to indicate the order is mixed
-    sendOrderMixedStatus();
   }
 
   // Small delay to prevent overwhelming the BLE connection
   if(currentMenu == 0){
     delay(100);
   }
+}
+
+int senseDropZone(){
+  // digitalRead the pin and return as int
+  int reading = digitalRead(dropZoneLimit); // LOW if triggered
+
+  // Check if drop zone has been emptied
+  // Can also run this check using external attach on this pin
+  if(!isTrayEmpty){
+    // check to see if tray has been removed
+    if(!isTrayRemoved){
+      isTrayRemoved = reading ? 1 : 0; // true if reading is high
+    }else{
+      // check to see if tray has been replaced
+      // isTrayReplaced = reading ? "1" : "0"; // unncecessary?
+      
+      isTrayEmpty = reading ? 0 : 1; // true if reading is low again
+      isTrayRemoved = 0; // reset bool condition
+      if(isTrayEmpty){
+        sendTrayStatus(isTrayEmpty); // send tray empty
+      }
+    }
+  }
+  return reading;
+}
+
+void senseCalibration(){
+
+}
+
+void sendTrayStatus(bool TrayStatus) {
+    // Send the message to the Bluetooth app indicating the tray status
+    String message = "TRAY_EMPTY:";
+    message += TrayStatus ? "1" : "0";
+    message += "#END";  // End marker for message
+    Serial1.println(message);  // Send to Bluetooth
+
+    // Set tray boolean as false
+    isTrayEmpty = TrayStatus;
 }
 
 void sendOrderMixedStatus() {
