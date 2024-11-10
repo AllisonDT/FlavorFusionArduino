@@ -241,6 +241,9 @@ void loop() {
 
       // Send "ORDER_MIXED:1" to Bluetooth app to indicate the order is mixed
       sendOrderMixedStatus();
+
+      Serial.println("Tray status is being set to false");
+
       sendTrayStatus(false);
     }else if(reading){
       // warn user to reload cup
@@ -261,10 +264,13 @@ int senseDropZone(){
 
   // Check if drop zone has been emptied
   // Can also run this check using external attach on this pin
+  Serial.print("isTrayEmpty is: ");
+  Serial.println(isTrayEmpty);
   if(!isTrayEmpty){
     // check to see if tray has been removed
+    Serial.println("Hellooooooo");
     if(!isTrayRemoved){
-      isTrayRemoved = reading ? "1" : "0"; // true if reading is high
+      isTrayRemoved = reading ? 1 : 0; // true if reading is high
       Serial.print("isTrayRemoved is: ");
       Serial.println(isTrayRemoved);
     }else{
@@ -272,7 +278,7 @@ int senseDropZone(){
       // isTrayReplaced = reading ? "1" : "0"; // unncecessary?
       sendTrayStatus(true);
       Serial.println("Tray status has been sent");
-      isTrayEmpty = reading ? "0" : "1"; // true if reading is low again
+      isTrayEmpty = reading ? 0 : 1; // true if reading is low again
       isTrayRemoved = 0; // reset bool condition
     }
   }
@@ -289,6 +295,9 @@ void sendTrayStatus(bool isTrayEmpty) {
     message += isTrayEmpty ? "1" : "0";
     message += "#END";  // End marker for message
     Serial1.println(message);  // Send to Bluetooth
+
+    // Set tray boolean as false
+    isTrayEmpty = 0;
 }
 
 void sendOrderMixedStatus() {
