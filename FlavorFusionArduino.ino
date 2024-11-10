@@ -146,7 +146,6 @@ void loop() {
     }
   }
   
-
   // Update current LCD menu
   if(menu_redraw_required){
     u8g.firstPage();
@@ -220,12 +219,21 @@ void loop() {
 
     // Send "ORDER_MIXED:1" to Bluetooth app to indicate the order is mixed
     sendOrderMixedStatus();
+    sendTrayStatus(false);
   }
 
   // Small delay to prevent overwhelming the BLE connection
   if(currentMenu == 0){
     delay(100);
   }
+}
+
+void sendTrayStatus(bool isTrayEmpty) {
+    // Send the message to the Bluetooth app indicating the tray status
+    String message = "TRAY_EMPTY:";
+    message += isTrayEmpty ? "1" : "0";
+    message += "#END";  // End marker for message
+    Serial1.println(message);  // Send to Bluetooth
 }
 
 void sendOrderMixedStatus() {
