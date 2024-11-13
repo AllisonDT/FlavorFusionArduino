@@ -5,6 +5,7 @@
 // HM-10 RXD to Arduino Mega TX1 (Pin 18) (Use voltage divider to reduce 5V to 3.3V)
 
 #include "U8glib.h" // For LCD
+#include <DHT11.h> // For temp sensor
 
 // Variables
 String incomingString = "";
@@ -42,11 +43,14 @@ const int totalSpices = 10;
 #define augerDir 48
 #define augerEn A8
 
-// Drop Zone limit switch on Xmin pins
-#define dropZoneLimit 3
+// Drop Zone limit switch on Xmax pins
+#define dropZoneLimit 2
 
-// Calibration limit switch on Xmax pins
-#define calibrationLimit 2
+// Calibration limit switch on Ymin pins
+#define calibrationLimit 14
+
+// DHT11 temp and humidity sensor on Xmin pins
+DHT11 dht11(3);
 
 // Spice data arrays
 String spiceArray[10][2];
@@ -119,6 +123,7 @@ void setup() {
   pinMode(LCD_beeper, OUTPUT);
   pinMode(dropZoneLimit, INPUT_PULLUP);
   pinMode(calibrationLimit, INPUT_PULLUP);
+  pinMode(3, INPUT); // for DHT11
 
   analogWrite(LCD_beeper, 0); // start beeper silent
 
@@ -129,12 +134,13 @@ void setup() {
   
   // Initialize Bluetooth (HM-10)
   Serial1.begin(9600);
-  Serial.begin(9600);
 
   u8g.setColorIndex(1);      // Set color to white  
   menu_redraw_required = 1;     // force initial redraw
 
   randomSeed(analogRead(A5)); // Note: ensure nothing is connected to A5 (in Aux-2 pins on Ramps)
+
+  // dht11.setDelay(5000); // set a delay (ms) for temp readings
 }
 
 void loop() {
@@ -194,16 +200,14 @@ void loop() {
     }
   }
 
+  // sense temp (Note: move this to motor functions)
+  senseTemp();
+
   // check for drop zone cup presence before moving motors
   int reading = senseDropZone();
 
   // Process spice data if the order has been received and not mixed
   if (!isOrderMixed) {
-    Serial.print("Reading is: ");
-    Serial.println(reading);
-    Serial.print("isTrayEmpty is: ");
-    Serial.println(isTrayEmpty);
-    Serial.println();
     // ensure limit switch is LOW and tray is empty
     if(!reading && isTrayEmpty){
 
@@ -241,9 +245,6 @@ void loop() {
 
       // Send "ORDER_MIXED:1" to Bluetooth app to indicate the order is mixed
       sendOrderMixedStatus();
-
-      Serial.println("Tray status is being set to false");
-
       sendTrayStatus(false);
     }else if(reading){
       // warn user to reload cup
@@ -264,40 +265,33 @@ int senseDropZone(){
 
   // Check if drop zone has been emptied
   // Can also run this check using external attach on this pin
-  Serial.print("isTrayEmpty is: ");
-  Serial.println(isTrayEmpty);
   if(!isTrayEmpty){
     // check to see if tray has been removed
-    Serial.println("Hellooooooo");
     if(!isTrayRemoved){
       isTrayRemoved = reading ? 1 : 0; // true if reading is high
-      Serial.print("isTrayRemoved is: ");
-      Serial.println(isTrayRemoved);
     }else{
       // check to see if tray has been replaced
       // isTrayReplaced = reading ? "1" : "0"; // unncecessary?
-      sendTrayStatus(true);
-      Serial.println("Tray status has been sent");
+      
       isTrayEmpty = reading ? 0 : 1; // true if reading is low again
       isTrayRemoved = 0; // reset bool condition
+      if(isTrayEmpty){
+        sendTrayStatus(isTrayEmpty); // send tray empty
+      }
     }
   }
   return reading;
 }
 
-void senseCalibration(){
-
-}
-
-void sendTrayStatus(bool isTrayEmpty) {
+void sendTrayStatus(bool TrayStatus) {
     // Send the message to the Bluetooth app indicating the tray status
     String message = "TRAY_EMPTY:";
-    message += isTrayEmpty ? "1" : "0";
+    message += TrayStatus ? "1" : "0";
     message += "#END";  // End marker for message
     Serial1.println(message);  // Send to Bluetooth
 
     // Set tray boolean as false
-    isTrayEmpty = 0;
+    isTrayEmpty = TrayStatus;
 }
 
 void sendOrderMixedStatus() {
@@ -377,9 +371,14 @@ void moveSusan(int j) {
   // Susan picture loop
   u8g.firstPage();
   do {
+    int h = u8g.getFontAscent() - u8g.getFontDescent();
+
     u8g.drawStr(0, 0, "Moving to container #");
     int w = u8g.getStrPixelWidth("Moving to container #");
     u8g.drawStr(w+1, 0, spiceArray[j][0].c_str()); // convert String object to const char*
+
+    u8g.drawStr(0, 9*h, "Temp: ");
+    u8g.drawStr(31, 9*h, senseTemp());
   } while( u8g.nextPage());
 
   // Exit sleep
@@ -396,21 +395,25 @@ void moveSusan(int j) {
 
   // Calculate number of steps
   int spiceDiff = abs(spiceArray[j][0].toInt() - prevSpice);
-  int numSteps = spiceDiff * totalSteps/totalSpices;
+  int numSteps = spiceDiff * totalMicrosteps/totalSpices;
 
   // Actuate
   digitalWrite(susanDir, LOW);
   for (int s = 0; s < numSteps; s++) {
     digitalWrite(susanStep, HIGH); 
-    delayMicroseconds(7500);
+    delayMicroseconds(500);
     digitalWrite(susanStep, LOW); 
-    delayMicroseconds(7500); 
+    delayMicroseconds(500); 
   }
 
   // Finished susan picture loop
   u8g.firstPage();
   do {
+    int h = u8g.getFontAscent() - u8g.getFontDescent();
+
     u8g.drawStr(0, 0, "Carriage Motion Complete");
+    u8g.drawStr(0, 9*h, "Temp: ");
+    u8g.drawStr(31, 9*h, senseTemp());
   } while( u8g.nextPage());
 
   delay(1000);
@@ -423,7 +426,11 @@ void moveRailForward() {
   // Rail fwd picture loop
   u8g.firstPage();
   do {
+    int h = u8g.getFontAscent() - u8g.getFontDescent();
+
     u8g.drawStr(0, 0, "Moving rail forward");
+    u8g.drawStr(0, 9*h, "Temp: ");
+    u8g.drawStr(31, 9*h, senseTemp());
   } while( u8g.nextPage());
 
   // Exit sleep
@@ -449,6 +456,9 @@ void moveRailForward() {
     u8g.drawStr(0, 0, "Rail forward motion");
     int h = u8g.getFontAscent() - u8g.getFontDescent();
     u8g.drawStr(0, h+1, "complete");
+
+    u8g.drawStr(0, 9*h, "Temp: ");
+    u8g.drawStr(31, 9*h, senseTemp());
   } while( u8g.nextPage());
   delay(1000);
 
@@ -460,7 +470,11 @@ void moveRailBackward() {
   // Rail backward picture loop
   u8g.firstPage();
   do {
+    int h = u8g.getFontAscent() - u8g.getFontDescent();
+
     u8g.drawStr(0, 0, "Moving rail backward");
+    u8g.drawStr(0, 9*h, "Temp: ");
+    u8g.drawStr(31, 9*h, senseTemp());
   } while( u8g.nextPage());
 
   // Exit sleep
@@ -485,6 +499,9 @@ void moveRailBackward() {
     u8g.drawStr(0, 0, "Rail backward motion");
     int h = u8g.getFontAscent() - u8g.getFontDescent();
     u8g.drawStr(0, h+1, "complete");
+
+    u8g.drawStr(0, 9*h, "Temp: ");
+    u8g.drawStr(31, 9*h, senseTemp());
   } while( u8g.nextPage());
   delay(1000);
 
@@ -496,7 +513,11 @@ void moveAuger(int j) {
   // Auger picture loop
   u8g.firstPage();
   do {
+    int h = u8g.getFontAscent() - u8g.getFontDescent();
+    
     u8g.drawStr(0, 0, "Moving auger");
+    u8g.drawStr(0, 9*h, "Temp: ");
+    u8g.drawStr(31, 9*h, senseTemp());
   } while( u8g.nextPage());
 
   // Exit sleep
@@ -506,15 +527,15 @@ void moveAuger(int j) {
   // calculate number of steps
   float spiceAmount = spiceArray[j][1].toFloat();
   int revPerOz = 10;
-  int numSteps = spiceAmount * revPerOz * totalSteps;
+  int numSteps = spiceAmount * revPerOz * totalMicrosteps;
 
   // Actuate
   digitalWrite(augerDir, LOW);
   for (int s = 0; s < numSteps; s++) {
     digitalWrite(augerStep, HIGH); 
-    delayMicroseconds(5000);
+    delayMicroseconds(325);
     digitalWrite(augerStep, LOW); 
-    delayMicroseconds(5000); 
+    delayMicroseconds(325); 
   }
 
   // Finished auger picture loop
@@ -533,6 +554,9 @@ void moveAuger(int j) {
     u8g.drawStr(w, 0, truncatedAmount); 
     int h = u8g.getFontAscent() - u8g.getFontDescent();
     u8g.drawStr(0, h+1, "oz of spice");
+
+    u8g.drawStr(0, 9*h, "Temp: ");
+    u8g.drawStr(31, 9*h, senseTemp());
   } while( u8g.nextPage());
 
   delay(1000);
@@ -542,15 +566,68 @@ void moveAuger(int j) {
 }
 
 void calibrate() {
-  isSusanRotated = 0;
 
   // Calibration picture loop
   u8g.firstPage();
   do {
+    int h = u8g.getFontAscent()-u8g.getFontDescent();
     u8g.drawStr(0, 0, "Calibrating...");
+    u8g.drawStr(0, 9*h, "Temp: ");
+    u8g.drawStr(31, 9*h, senseTemp());
   } while( u8g.nextPage());  
 
-  delay(2000); // Note: Remove this line!!!
+  // Remove from sleep
+  digitalWrite(susanEn, LOW);
+  delay(50);
+
+  // Spin carriage quickly until switch triggers for the first time
+  digitalWrite(susanDir, LOW);
+  for (int s = 0; s < totalMicrosteps; s++) {
+    digitalWrite(susanStep, HIGH); 
+    delayMicroseconds(500);
+    digitalWrite(susanStep, LOW); 
+    delayMicroseconds(500); 
+    if(!digitalRead(calibrationLimit)){
+      break;
+    }
+  }
+
+  bool isNewTrigger = 0; // track switch state for sensing trigger #2
+
+  // Spin carriage slowly until switch triggers for the second time
+  digitalWrite(susanDir, LOW);
+  for (int s = 0; s < totalMicrosteps; s++) {
+    // sense switch state
+    int reading = digitalRead(calibrationLimit);
+
+    // ensure switch has been reset
+    if(reading == HIGH){
+      isNewTrigger = 1;
+    }
+    
+    digitalWrite(susanStep, HIGH); 
+    delayMicroseconds(2500);
+    digitalWrite(susanStep, LOW); 
+    delayMicroseconds(2500); 
+    if(reading == LOW && isNewTrigger){
+      break;
+    }
+  }
+
+  // Spin carriage very slowly until switch releases
+  digitalWrite(susanDir, LOW);
+  for (int s = 0; s < totalMicrosteps; s++) {
+    digitalWrite(susanStep, HIGH); 
+    delayMicroseconds(5000);
+    digitalWrite(susanStep, LOW); 
+    delayMicroseconds(5000); 
+    if(digitalRead(calibrationLimit)){
+      break;
+    }
+  }
+
+  // Enter sleep 
+  digitalWrite(susanEn, HIGH);
 }
 
 
@@ -1055,4 +1132,22 @@ void drawAmountMenu(){
     l += u8g.getStrWidth(labels[i]) + s;
   }
 
+}
+
+char* senseTemp(){
+  int temperature = dht11.readTemperature();
+
+  static char tempString[6]; // static so string persists once function returns
+
+  // check for errors in temp reading
+  if (temperature != DHT11::ERROR_CHECKSUM && temperature != DHT11::ERROR_TIMEOUT) {
+        int tempFar = temperature*9/5 + 32; // convert to Farenheit
+        itoa(tempFar, tempString, 10); // convert to string
+        return tempString;
+    } else {
+        // Return error message 
+        // Serial.println(DHT11::getErrorString(temperature));
+        strcpy(tempString, "Error");
+        return tempString;
+    }
 }
