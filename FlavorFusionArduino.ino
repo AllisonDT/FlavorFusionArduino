@@ -368,6 +368,8 @@ void processReceivedIngredients(String data) {
 }
 
 void moveSusan(int j) {
+  char *temp = senseTemp();
+
   // Susan picture loop
   u8g.firstPage();
   do {
@@ -378,7 +380,7 @@ void moveSusan(int j) {
     u8g.drawStr(w+1, 0, spiceArray[j][0].c_str()); // convert String object to const char*
 
     u8g.drawStr(0, 6*h, "Temp: ");
-    u8g.drawStr(31, 6*h, senseTemp());
+    u8g.drawStr(31, 6*h, temp);
   } while( u8g.nextPage());
 
   // Exit sleep
@@ -413,16 +415,18 @@ void moveSusan(int j) {
 
     u8g.drawStr(0, 0, "Carriage Motion Complete");
     u8g.drawStr(0, 6*h, "Temp: ");
-    u8g.drawStr(31, 6*h, senseTemp());
+    u8g.drawStr(31, 6*h, temp);
   } while( u8g.nextPage());
 
-  delay(1000);
+  // delay(1000);
 
   // Enter sleep
   digitalWrite(susanEn, HIGH);
 }
 
 void moveRailForward() {
+  char *temp = senseTemp();
+
   // Rail fwd picture loop
   u8g.firstPage();
   do {
@@ -430,7 +434,7 @@ void moveRailForward() {
 
     u8g.drawStr(0, 0, "Moving rail forward");
     u8g.drawStr(0, 6*h, "Temp: ");
-    u8g.drawStr(31, 6*h, senseTemp());
+    u8g.drawStr(31, 6*h, temp);
   } while( u8g.nextPage());
 
   // Exit sleep
@@ -458,15 +462,17 @@ void moveRailForward() {
     u8g.drawStr(0, h+1, "complete");
 
     u8g.drawStr(0, 6*h, "Temp: ");
-    u8g.drawStr(31, 6*h, senseTemp());
+    u8g.drawStr(31, 6*h, temp);
   } while( u8g.nextPage());
-  delay(1000);
+  // delay(1000);
 
   // Enter sleep
   digitalWrite(railEn, HIGH);
 }
 
 void moveRailBackward() {
+  char *temp = senseTemp();
+
   // Rail backward picture loop
   u8g.firstPage();
   do {
@@ -474,7 +480,7 @@ void moveRailBackward() {
 
     u8g.drawStr(0, 0, "Moving rail backward");
     u8g.drawStr(0, 6*h, "Temp: ");
-    u8g.drawStr(31, 6*h, senseTemp());
+    u8g.drawStr(31, 6*h, temp);
   } while( u8g.nextPage());
 
   // Exit sleep
@@ -501,15 +507,17 @@ void moveRailBackward() {
     u8g.drawStr(0, h+1, "complete");
 
     u8g.drawStr(0, 6*h, "Temp: ");
-    u8g.drawStr(31, 6*h, senseTemp());
+    u8g.drawStr(31, 6*h, temp);
   } while( u8g.nextPage());
-  delay(1000);
+  // delay(1000);
 
   // Enter sleep
   digitalWrite(railEn, HIGH);
 }
 
 void moveAuger(int j) {
+  char *temp = senseTemp();
+
   // Auger picture loop
   u8g.firstPage();
   do {
@@ -517,7 +525,7 @@ void moveAuger(int j) {
     
     u8g.drawStr(0, 0, "Moving auger");
     u8g.drawStr(0, 6*h, "Temp: ");
-    u8g.drawStr(31, 6*h, senseTemp());
+    u8g.drawStr(31, 6*h, temp);
   } while( u8g.nextPage());
 
   // Exit sleep
@@ -527,7 +535,7 @@ void moveAuger(int j) {
   // calculate number of steps
   float spiceAmount = spiceArray[j][1].toFloat();
   int revPerOz = 10;
-  int numSteps = spiceAmount * revPerOz * totalMicrosteps;
+  int numSteps = ceil(spiceAmount * revPerOz) * totalMicrosteps;
 
   // Actuate
   digitalWrite(augerDir, LOW);
@@ -556,10 +564,10 @@ void moveAuger(int j) {
     u8g.drawStr(0, h+1, "oz of spice");
 
     u8g.drawStr(0, 6*h, "Temp: ");
-    u8g.drawStr(31, 6*h, senseTemp());
+    u8g.drawStr(31, 6*h, temp);
   } while( u8g.nextPage());
 
-  delay(1000);
+  // delay(1000);
 
   // Enter sleep
   digitalWrite(augerEn, HIGH);
@@ -618,9 +626,9 @@ void calibrate() {
   digitalWrite(susanDir, LOW);
   for (int s = 0; s < totalMicrosteps; s++) {
     digitalWrite(susanStep, HIGH); 
-    delayMicroseconds(5000);
+    delayMicroseconds(7500);
     digitalWrite(susanStep, LOW); 
-    delayMicroseconds(5000); 
+    delayMicroseconds(7500); 
     if(digitalRead(calibrationLimit)){
       break;
     }
