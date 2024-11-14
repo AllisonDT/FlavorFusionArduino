@@ -200,16 +200,14 @@ void loop() {
     }
   }
 
-  // sense temp (Note: move this to motor functions)
-  senseTemp();
-
   // check for drop zone cup presence before moving motors
   int reading = senseDropZone();
 
   // Process spice data if the order has been received and not mixed
   if (!isOrderMixed) {
-    // ensure limit switch is LOW and tray is empty
-    if(!reading && isTrayEmpty){
+
+    // ensure limit switch is LOW
+    if(!reading){
 
       // calibrate carriage position
       calibrate();
@@ -248,8 +246,10 @@ void loop() {
       sendTrayStatus(false);
     }else if(reading){
       // warn user to reload cup
-    }else if(!isTrayEmpty){
-      // warn user to empty tray
+      u8g.firstPage();
+          do{
+            u8g.drawStr(0, 0, "Please insert cup");
+          } while(u8g.nextPage());
     }
   }
 
@@ -377,8 +377,8 @@ void moveSusan(int j) {
     int w = u8g.getStrPixelWidth("Moving to container #");
     u8g.drawStr(w+1, 0, spiceArray[j][0].c_str()); // convert String object to const char*
 
-    u8g.drawStr(0, 9*h, "Temp: ");
-    u8g.drawStr(31, 9*h, senseTemp());
+    u8g.drawStr(0, 6*h, "Temp: ");
+    u8g.drawStr(31, 6*h, senseTemp());
   } while( u8g.nextPage());
 
   // Exit sleep
@@ -412,8 +412,8 @@ void moveSusan(int j) {
     int h = u8g.getFontAscent() - u8g.getFontDescent();
 
     u8g.drawStr(0, 0, "Carriage Motion Complete");
-    u8g.drawStr(0, 9*h, "Temp: ");
-    u8g.drawStr(31, 9*h, senseTemp());
+    u8g.drawStr(0, 6*h, "Temp: ");
+    u8g.drawStr(31, 6*h, senseTemp());
   } while( u8g.nextPage());
 
   delay(1000);
@@ -429,8 +429,8 @@ void moveRailForward() {
     int h = u8g.getFontAscent() - u8g.getFontDescent();
 
     u8g.drawStr(0, 0, "Moving rail forward");
-    u8g.drawStr(0, 9*h, "Temp: ");
-    u8g.drawStr(31, 9*h, senseTemp());
+    u8g.drawStr(0, 6*h, "Temp: ");
+    u8g.drawStr(31, 6*h, senseTemp());
   } while( u8g.nextPage());
 
   // Exit sleep
@@ -457,8 +457,8 @@ void moveRailForward() {
     int h = u8g.getFontAscent() - u8g.getFontDescent();
     u8g.drawStr(0, h+1, "complete");
 
-    u8g.drawStr(0, 9*h, "Temp: ");
-    u8g.drawStr(31, 9*h, senseTemp());
+    u8g.drawStr(0, 6*h, "Temp: ");
+    u8g.drawStr(31, 6*h, senseTemp());
   } while( u8g.nextPage());
   delay(1000);
 
@@ -473,8 +473,8 @@ void moveRailBackward() {
     int h = u8g.getFontAscent() - u8g.getFontDescent();
 
     u8g.drawStr(0, 0, "Moving rail backward");
-    u8g.drawStr(0, 9*h, "Temp: ");
-    u8g.drawStr(31, 9*h, senseTemp());
+    u8g.drawStr(0, 6*h, "Temp: ");
+    u8g.drawStr(31, 6*h, senseTemp());
   } while( u8g.nextPage());
 
   // Exit sleep
@@ -500,8 +500,8 @@ void moveRailBackward() {
     int h = u8g.getFontAscent() - u8g.getFontDescent();
     u8g.drawStr(0, h+1, "complete");
 
-    u8g.drawStr(0, 9*h, "Temp: ");
-    u8g.drawStr(31, 9*h, senseTemp());
+    u8g.drawStr(0, 6*h, "Temp: ");
+    u8g.drawStr(31, 6*h, senseTemp());
   } while( u8g.nextPage());
   delay(1000);
 
@@ -516,8 +516,8 @@ void moveAuger(int j) {
     int h = u8g.getFontAscent() - u8g.getFontDescent();
     
     u8g.drawStr(0, 0, "Moving auger");
-    u8g.drawStr(0, 9*h, "Temp: ");
-    u8g.drawStr(31, 9*h, senseTemp());
+    u8g.drawStr(0, 6*h, "Temp: ");
+    u8g.drawStr(31, 6*h, senseTemp());
   } while( u8g.nextPage());
 
   // Exit sleep
@@ -555,8 +555,8 @@ void moveAuger(int j) {
     int h = u8g.getFontAscent() - u8g.getFontDescent();
     u8g.drawStr(0, h+1, "oz of spice");
 
-    u8g.drawStr(0, 9*h, "Temp: ");
-    u8g.drawStr(31, 9*h, senseTemp());
+    u8g.drawStr(0, 6*h, "Temp: ");
+    u8g.drawStr(31, 6*h, senseTemp());
   } while( u8g.nextPage());
 
   delay(1000);
@@ -572,8 +572,8 @@ void calibrate() {
   do {
     int h = u8g.getFontAscent()-u8g.getFontDescent();
     u8g.drawStr(0, 0, "Calibrating...");
-    u8g.drawStr(0, 9*h, "Temp: ");
-    u8g.drawStr(31, 9*h, senseTemp());
+    u8g.drawStr(0, 6*h, "Temp: ");
+    u8g.drawStr(31, 6*h, senseTemp());
   } while( u8g.nextPage());  
 
   // Remove from sleep
