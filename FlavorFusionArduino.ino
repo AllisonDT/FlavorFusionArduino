@@ -403,9 +403,9 @@ void moveSusan(int j) {
   digitalWrite(susanDir, LOW);
   for (int s = 0; s < numSteps; s++) {
     digitalWrite(susanStep, HIGH); 
-    delayMicroseconds(500);
+    delayMicroseconds(2500);
     digitalWrite(susanStep, LOW); 
-    delayMicroseconds(500); 
+    delayMicroseconds(2500); 
   }
 
   // Finished susan picture loop
@@ -418,7 +418,7 @@ void moveSusan(int j) {
     u8g.drawStr(31, 6*h, temp);
   } while( u8g.nextPage());
 
-  // delay(1000);
+  delay(3000);
 
   // Enter sleep
   digitalWrite(susanEn, HIGH);
