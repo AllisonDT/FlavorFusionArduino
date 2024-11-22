@@ -5,18 +5,15 @@
 // HM-10 RXD to Arduino Mega TX1 (Pin 18) (Use voltage divider to reduce 5V to 3.3V)
 
 #include "U8glib.h" // For LCD
+#include <DHT11.h> // For temp sensor
 
 // Variables
 String incomingString = "";
 bool isOrderMixed = true;     // Track whether the whole order is mixed
 bool isTrayEmpty = true;       // Track whether the tray is empty
 String dataBuffer = "";        // Global buffer to accumulate incoming data
-bool isSusanRotated = 0; // Note: can prolly remove this since we'll calibrate every time
-bool isRailForward = 0; // Note: can prolly remove this
 int numSpicesOrdered;         // Number of spices in current job
-bool isOrderInput = 0; // Note: can prolly remove this
 bool isTrayRemoved = 0;
-bool isTrayReplaced = 0; //Note: can prolly remove this
 
 // Variables to track previous states
 bool prevIsOrderMixed = false;
@@ -42,11 +39,14 @@ const int totalSpices = 10;
 #define augerDir 48
 #define augerEn A8
 
-// Drop Zone limit switch on Xmin pins
-#define dropZoneLimit 3
+// Drop Zone limit switch on Xmax pins
+#define dropZoneLimit 2
 
-// Calibration limit switch on Xmax pins
-#define calibrationLimit 2
+// Calibration limit switch on Ymin pins
+#define calibrationLimit 14
+
+// DHT11 temp and humidity sensor on Xmin pins
+DHT11 dht11(3);
 
 // Spice data arrays
 String spiceArray[10][2];
@@ -119,6 +119,7 @@ void setup() {
   pinMode(LCD_beeper, OUTPUT);
   pinMode(dropZoneLimit, INPUT_PULLUP);
   pinMode(calibrationLimit, INPUT_PULLUP);
+  pinMode(3, INPUT); // for DHT11
 
   analogWrite(LCD_beeper, 0); // start beeper silent
 
@@ -134,6 +135,7 @@ void setup() {
   menu_redraw_required = 1;     // force initial redraw
 
   randomSeed(analogRead(A5)); // Note: ensure nothing is connected to A5 (in Aux-2 pins on Ramps)
+
 }
 
 void loop() {
@@ -198,8 +200,9 @@ void loop() {
 
   // Process spice data if the order has been received and not mixed
   if (!isOrderMixed) {
-    // ensure limit switch is LOW and tray is empty
-    if(!reading && isTrayEmpty){
+
+    // ensure limit switch is LOW
+    if(!reading){
 
       // calibrate carriage position
       calibrate();
@@ -211,14 +214,14 @@ void loop() {
           // Move susan to the requested spice
           moveSusan(j);
 
-          // Move rail forward
-          moveRailForward();
+          // Move rail to dispense
+          moveRailForward(j);
 
-          // Move auger for requested amount
-          moveAuger(j);
+          // NOTE: no auger!
+          // moveAuger(j);
 
-          // Move rail back
-          moveRailBackward();
+          // NOTE: no secondary rail function!
+          // moveRailBackward();
         } else {
 
           u8g.firstPage();
@@ -238,8 +241,10 @@ void loop() {
       sendTrayStatus(false);
     }else if(reading){
       // warn user to reload cup
-    }else if(!isTrayEmpty){
-      // warn user to empty tray
+      u8g.firstPage();
+          do{
+            u8g.drawStr(0, 0, "Please insert cup");
+          } while(u8g.nextPage());
     }
   }
 
@@ -261,7 +266,6 @@ int senseDropZone(){
       isTrayRemoved = reading ? 1 : 0; // true if reading is high
     }else{
       // check to see if tray has been replaced
-      // isTrayReplaced = reading ? "1" : "0"; // unncecessary?
       
       isTrayEmpty = reading ? 0 : 1; // true if reading is low again
       isTrayRemoved = 0; // reset bool condition
@@ -271,10 +275,6 @@ int senseDropZone(){
     }
   }
   return reading;
-}
-
-void senseCalibration(){
-
 }
 
 void sendTrayStatus(bool TrayStatus) {
@@ -362,12 +362,19 @@ void processReceivedIngredients(String data) {
 }
 
 void moveSusan(int j) {
+  char *temp = senseTemp();
+
   // Susan picture loop
   u8g.firstPage();
   do {
+    int h = u8g.getFontAscent() - u8g.getFontDescent();
+
     u8g.drawStr(0, 0, "Moving to container #");
     int w = u8g.getStrPixelWidth("Moving to container #");
     u8g.drawStr(w+1, 0, spiceArray[j][0].c_str()); // convert String object to const char*
+
+    u8g.drawStr(0, 6*h, "Temp: ");
+    u8g.drawStr(31, 6*h, temp);
   } while( u8g.nextPage());
 
   // Exit sleep
@@ -384,130 +391,94 @@ void moveSusan(int j) {
 
   // Calculate number of steps
   int spiceDiff = abs(spiceArray[j][0].toInt() - prevSpice);
-  int numSteps = spiceDiff * totalSteps/totalSpices;
+  int numSteps = spiceDiff * totalMicrosteps/totalSpices;
+
+  // Adjust for carriage offset
+  numSteps = numSteps - 30;
 
   // Actuate
   digitalWrite(susanDir, LOW);
-  for (int s = 0; s < numSteps; s++) {
+  for (int s = 0; s < numSteps/5; s++) {
     digitalWrite(susanStep, HIGH); 
-    delayMicroseconds(7500);
+    delayMicroseconds(5000);
     digitalWrite(susanStep, LOW); 
-    delayMicroseconds(7500); 
+    delayMicroseconds(5000); 
+  }for (int s = numSteps/5; s < 4*numSteps/5; s++){
+    digitalWrite(susanStep, HIGH); 
+    delayMicroseconds(2500);
+    digitalWrite(susanStep, LOW); 
+    delayMicroseconds(2500); 
+  }for (int s = 4*numSteps/5; s < numSteps; s++){
+    digitalWrite(susanStep, HIGH); 
+    delayMicroseconds(5000);
+    digitalWrite(susanStep, LOW); 
+    delayMicroseconds(5000); 
   }
 
   // Finished susan picture loop
   u8g.firstPage();
   do {
+    int h = u8g.getFontAscent() - u8g.getFontDescent();
+
     u8g.drawStr(0, 0, "Carriage Motion Complete");
+    u8g.drawStr(0, 6*h, "Temp: ");
+    u8g.drawStr(31, 6*h, temp);
   } while( u8g.nextPage());
 
-  delay(1000);
+  delay(3000);
 
   // Enter sleep
   digitalWrite(susanEn, HIGH);
 }
 
-void moveRailForward() {
+void moveRailForward(int j) {
+  char *temp = senseTemp();
+
   // Rail fwd picture loop
   u8g.firstPage();
   do {
-    u8g.drawStr(0, 0, "Moving rail forward");
+    int h = u8g.getFontAscent() - u8g.getFontDescent();
+
+    u8g.drawStr(0, 0, "Moving rail");
+    u8g.drawStr(0, 6*h, "Temp: ");
+    u8g.drawStr(31, 6*h, temp);
   } while( u8g.nextPage());
 
   // Exit sleep
   digitalWrite(railEn, LOW);
-  delay(50);
 
   // 20 revolutions for approx 0.75 in
-  int numSteps = 10 * totalSteps;
-  digitalWrite(railDir, LOW);
-  delay(50);
+  int numSteps = 15 * totalSteps;
 
-  // Actuate
-  for (int s = 0; s < numSteps; s++) {
-    digitalWrite(railStep, HIGH); 
-    delayMicroseconds(750);
-    digitalWrite(railStep, LOW); 
-    delayMicroseconds(750); 
-  }
-
-  // Finished rail picture loop
-  u8g.firstPage();
-  do {
-    u8g.drawStr(0, 0, "Rail forward motion");
-    int h = u8g.getFontAscent() - u8g.getFontDescent();
-    u8g.drawStr(0, h+1, "complete");
-  } while( u8g.nextPage());
-  delay(1000);
-
-  // Enter sleep
-  digitalWrite(railEn, HIGH);
-}
-
-void moveRailBackward() {
-  // Rail backward picture loop
-  u8g.firstPage();
-  do {
-    u8g.drawStr(0, 0, "Moving rail backward");
-  } while( u8g.nextPage());
-
-  // Exit sleep
-  digitalWrite(railEn, LOW);
-  delay(50);
-
-  // 20 revolutions for approx 0.75 in
-  int numSteps = 10 * totalSteps;
-  digitalWrite(railDir, HIGH);
-  delay(50);
-
-  for (int s = 0; s < numSteps; s++) {
-    digitalWrite(railStep, HIGH); 
-    delayMicroseconds(750);
-    digitalWrite(railStep, LOW); 
-    delayMicroseconds(750); 
-  }
-
-  // Finished rail picture loop
-  u8g.firstPage();
-  do {
-    u8g.drawStr(0, 0, "Rail backward motion");
-    int h = u8g.getFontAscent() - u8g.getFontDescent();
-    u8g.drawStr(0, h+1, "complete");
-  } while( u8g.nextPage());
-  delay(1000);
-
-  // Enter sleep
-  digitalWrite(railEn, HIGH);
-}
-
-void moveAuger(int j) {
-  // Auger picture loop
-  u8g.firstPage();
-  do {
-    u8g.drawStr(0, 0, "Moving auger");
-  } while( u8g.nextPage());
-
-  // Exit sleep
-  digitalWrite(augerEn, LOW);
-  delay(50);
-
-  // calculate number of steps
+  // calculate number of cycles
   float spiceAmount = spiceArray[j][1].toFloat();
-  int revPerOz = 10;
-  int numSteps = spiceAmount * revPerOz * totalSteps;
+  int revPerOz = 48;
+  int numCycles = ceil(spiceAmount * revPerOz);
 
   // Actuate
-  digitalWrite(augerDir, LOW);
-  for (int s = 0; s < numSteps; s++) {
-    digitalWrite(augerStep, HIGH); 
-    delayMicroseconds(5000);
-    digitalWrite(augerStep, LOW); 
-    delayMicroseconds(5000); 
-  }
+  for(int c = 0; c < numCycles; c++){
+    digitalWrite(railDir, LOW); // forward
+    delay(50);
+    for (int s = 0; s < numSteps; s++) {
+      digitalWrite(railStep, HIGH); 
+      delayMicroseconds(500);
+      digitalWrite(railStep, LOW); 
+      delayMicroseconds(500); 
+    }
 
-  // Finished auger picture loop
+    digitalWrite(railDir, HIGH); // back
+    delay(50);
+    for (int s = 0; s < numSteps; s++) {
+      digitalWrite(railStep, HIGH); 
+      delayMicroseconds(500);
+      digitalWrite(railStep, LOW); 
+      delayMicroseconds(500); 
+    }
+  }
+  // Finished rail picture loop
   u8g.firstPage();
   do {
+    // Finished dispensing picture loop
     u8g.drawStr(0, 0, "Dispensed ");
     int w = u8g.getStrPixelWidth("Dispensed ");
 
@@ -521,24 +492,210 @@ void moveAuger(int j) {
     u8g.drawStr(w, 0, truncatedAmount); 
     int h = u8g.getFontAscent() - u8g.getFontDescent();
     u8g.drawStr(0, h+1, "oz of spice");
-  } while( u8g.nextPage());
 
-  delay(1000);
+    u8g.drawStr(0, 6*h, "Temp: ");
+    u8g.drawStr(31, 6*h, temp);
+  } while( u8g.nextPage());
+  // delay(1000);
 
   // Enter sleep
-  digitalWrite(augerEn, HIGH);
+  digitalWrite(railEn, HIGH);
 }
 
+// void moveRailBackward() {
+//   char *temp = senseTemp();
+
+//   // Rail backward picture loop
+//   u8g.firstPage();
+//   do {
+//     int h = u8g.getFontAscent() - u8g.getFontDescent();
+
+//     u8g.drawStr(0, 0, "Moving rail backward");
+//     u8g.drawStr(0, 6*h, "Temp: ");
+//     u8g.drawStr(31, 6*h, temp);
+//   } while( u8g.nextPage());
+
+//   // Exit sleep
+//   digitalWrite(railEn, LOW);
+//   delay(50);
+
+//   // 20 revolutions for approx 0.75 in
+//   int numSteps = 10 * totalSteps;
+//   digitalWrite(railDir, HIGH);
+//   delay(50);
+
+//   for (int s = 0; s < numSteps; s++) {
+//     digitalWrite(railStep, HIGH); 
+//     delayMicroseconds(750);
+//     digitalWrite(railStep, LOW); 
+//     delayMicroseconds(750); 
+//   }
+
+//   // Finished rail picture loop
+//   u8g.firstPage();
+//   do {
+//     u8g.drawStr(0, 0, "Rail backward motion");
+//     int h = u8g.getFontAscent() - u8g.getFontDescent();
+//     u8g.drawStr(0, h+1, "complete");
+
+//     u8g.drawStr(0, 6*h, "Temp: ");
+//     u8g.drawStr(31, 6*h, temp);
+//   } while( u8g.nextPage());
+//   // delay(1000);
+
+//   // Enter sleep
+//   digitalWrite(railEn, HIGH);
+// }
+
+// void moveAuger(int j) {
+//   char *temp = senseTemp();
+
+//   // Auger picture loop
+//   u8g.firstPage();
+//   do {
+//     int h = u8g.getFontAscent() - u8g.getFontDescent();
+    
+//     u8g.drawStr(0, 0, "Moving dispenser");
+//     u8g.drawStr(0, 6*h, "Temp: ");
+//     u8g.drawStr(31, 6*h, temp);
+//   } while( u8g.nextPage());
+
+//   // Exit sleep
+//   digitalWrite(augerEn, LOW);
+//   delay(50);
+
+//   // calculate number of steps
+//   float spiceAmount = spiceArray[j][1].toFloat();
+//   int revPerOz = 48;
+//   int numCycles = spiceAmount * revPerOz;
+//   int numSteps = totalMicrosteps * 0.7;
+
+//   // move rack by 14 teeth
+//   // gear has 20 teeth
+
+//   // Actuate
+//   for (int c = 0; c < numCycles; c++){
+//     digitalWrite(augerDir, LOW); //cw
+//     for (int s = 0; s < numSteps; s++) {
+//       digitalWrite(augerStep, HIGH); 
+//       delayMicroseconds(325);
+//       digitalWrite(augerStep, LOW); 
+//       delayMicroseconds(325); 
+//     }
+
+//     delay(250); // delay for spices to fall
+
+//     digitalWrite(augerDir, HIGH); //ccw
+//     for (int s = 0; s < numSteps; s++) {
+//       digitalWrite(augerStep, HIGH); 
+//       delayMicroseconds(325);
+//       digitalWrite(augerStep, LOW); 
+//       delayMicroseconds(325); 
+//     }
+
+//     delay(100);
+//   }
+
+//   // Finished auger picture loop
+//   u8g.firstPage();
+//   do {
+//     u8g.drawStr(0, 0, "Dispensed ");
+//     int w = u8g.getStrPixelWidth("Dispensed ");
+
+//     // Find decimal point index
+//     int decimalIndex = spiceArray[j][1].indexOf('.');
+//     // Truncate string after 5 decimal places
+//     String truncatedString = spiceArray[j][1].substring(0, decimalIndex+6);
+//     // convert String object to const char*
+//     const char *truncatedAmount = truncatedString.c_str();
+
+//     u8g.drawStr(w, 0, truncatedAmount); 
+//     int h = u8g.getFontAscent() - u8g.getFontDescent();
+//     u8g.drawStr(0, h+1, "oz of spice");
+
+//     u8g.drawStr(0, 6*h, "Temp: ");
+//     u8g.drawStr(31, 6*h, temp);
+//   } while( u8g.nextPage());
+
+//   // delay(1000);
+
+//   // Enter sleep
+//   digitalWrite(augerEn, HIGH);
+// }
+
 void calibrate() {
-  isSusanRotated = 0;
 
   // Calibration picture loop
   u8g.firstPage();
   do {
+    int h = u8g.getFontAscent()-u8g.getFontDescent();
     u8g.drawStr(0, 0, "Calibrating...");
+    u8g.drawStr(0, 6*h, "Temp: ");
+    u8g.drawStr(31, 6*h, senseTemp());
   } while( u8g.nextPage());  
 
-  delay(2000); // Note: Remove this line!!!
+  // Remove from sleep
+  digitalWrite(susanEn, LOW);
+  delay(50);
+
+  // Spin carriage quickly until switch triggers for the first time
+  digitalWrite(susanDir, LOW);
+  for (int s = 0; s < totalMicrosteps; s++) {
+    digitalWrite(susanStep, HIGH); 
+    delayMicroseconds(2500);
+    digitalWrite(susanStep, LOW); 
+    delayMicroseconds(2500); 
+    if(!digitalRead(calibrationLimit)){
+      break;
+    }
+  }
+
+  bool isNewTrigger = 0; // track switch state for sensing trigger #2
+
+  // Spin carriage slowly until switch triggers for the second time
+  digitalWrite(susanDir, LOW);
+  for (int s = 0; s < totalMicrosteps; s++) {
+    // sense switch state
+    int reading = digitalRead(calibrationLimit);
+
+    // ensure switch has been reset
+    if(reading == HIGH){
+      isNewTrigger = 1;
+    }
+    
+    digitalWrite(susanStep, HIGH); 
+    delayMicroseconds(5000);
+    digitalWrite(susanStep, LOW); 
+    delayMicroseconds(5000); 
+    if(reading == LOW && isNewTrigger){
+      break;
+    }
+  }
+
+  // Spin carriage very slowly until switch releases
+  digitalWrite(susanDir, LOW);
+  for (int s = 0; s < totalMicrosteps; s++) {
+    digitalWrite(susanStep, HIGH); 
+    delayMicroseconds(7500);
+    digitalWrite(susanStep, LOW); 
+    delayMicroseconds(7500); 
+    if(digitalRead(calibrationLimit)){
+      break;
+    }
+  }
+
+  // Spin back 1 degree to align
+  // digitalWrite(susanDir, HIGH);
+  // delay(500);
+  // for (int s = 0; s < totalMicrosteps/360; s++) {
+  //   digitalWrite(susanStep, HIGH); 
+  //   delayMicroseconds(7500);
+  //   digitalWrite(susanStep, LOW); 
+  //   delayMicroseconds(7500); 
+  // }
+
+  // Enter sleep 
+  digitalWrite(susanEn, HIGH);
 }
 
 
@@ -1043,4 +1200,22 @@ void drawAmountMenu(){
     l += u8g.getStrWidth(labels[i]) + s;
   }
 
+}
+
+char* senseTemp(){
+  int temperature = dht11.readTemperature();
+
+  static char tempString[6]; // static so string persists once function returns
+
+  // check for errors in temp reading
+  if (temperature != DHT11::ERROR_CHECKSUM && temperature != DHT11::ERROR_TIMEOUT) {
+        int tempFar = temperature*9/5 + 32; // convert to Farenheit
+        itoa(tempFar, tempString, 10); // convert to string
+        return tempString;
+    } else {
+        // Return error message 
+        // Serial.println(DHT11::getErrorString(temperature));
+        strcpy(tempString, "Error");
+        return tempString;
+    }
 }
